@@ -13,9 +13,11 @@ what it's doing.
   ClassicUO, against a private local ModernUO shard, running under Wine. The
   window, key storage, dry run, the STOP button and every action (walk,
   path-to, attack, war mode, skills, items with a target, speech) worked
-  there. It still needs a run on a real Windows install before it's called
-  working. Everything that doesn't touch the game is unit-tested on CPython
-  and on IronPython 3.4, Razor Enhanced's engine.
+  there. CI also runs on Windows: it installs with `install.ps1`, runs the
+  tests on IronPython for .NET Framework (Razor Enhanced's engine), and
+  drives the real window and DPAPI key storage (`tools/windows_smoke.py`).
+  It still needs a player to run it in the game on Windows before it's
+  called working.
 - **Not yet talking to Jev.** Typesafe's Jev API docs aren't in hand, so no
   endpoints are guessed. Until they are, an **offline stub** makes the
   decisions: it bandages your character when below 60% health and otherwise
