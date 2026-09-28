@@ -1,0 +1,54 @@
+name: Release
+
+# Every merge to main that carries a new version in jevanced/__init__.py
+# publishes a GitHub release with jevanced.zip attached. The installer
+# (install.ps1) always downloads the latest release, so bumping the version
+# in a PR is all it takes to ship.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Read version
+        id: version
+        run: echo "version=$(python -c 'import jevanced; print(jevanced.__version__)')" >> "$GITHUB_OUTPUT"
+      - name: Skip if already released
+        id: check
+        run: |
+          if git rev-parse -q --verify "refs/tags/v${{ steps.version.outputs.version }}" >/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Test
+        if: steps.check.outputs.exists == 'false'
+        run: python -m unittest discover -s tests -t .
+      - name: Build
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          python tools/build.py
+          cp "dist/jevanced-${{ steps.version.outputs.version }}.zip" dist/jevanced.zip
+      - name: Publish release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}" \
+            dist/jevanced.zip "dist/jevanced-${{ steps.version.outputs.version }}.zip" install.ps1 \
+            --target "$GITHUB_SHA" \
+            --title "jevanced ${{ steps.version.outputs.version }}" \
+            --generate-notes
