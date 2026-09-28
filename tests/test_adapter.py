@@ -33,9 +33,17 @@ class Recorder(object):
         return call
 
 
+STEPS = {"North": (0, -1), "South": (0, 1), "East": (1, 0), "West": (-1, 0)}
+
+
 class FakePlayer(Recorder):
+    """Walks like Razor Enhanced's Player: a new direction only turns."""
+
     def __init__(self):
-        Recorder.__init__(self, Walk=True)
+        Recorder.__init__(self)
+        self.Direction = "North"
+        self.blocked = False
+        self.busy = 0  # how many Walk calls fail as "too soon"
         self.Serial = 1
         self.Name = "Tester"
         self.Hits, self.HitsMax = 40, 80
@@ -48,6 +56,21 @@ class FakePlayer(Recorder):
         self.Weight, self.MaxWeight, self.Gold = 50, 400, 12
         self.Connected = True
         self.Backpack = Obj(Contains=[Obj(Serial=9, ItemID=0x0E21, Name="bandage", Amount=30)])
+
+    def Walk(self, direction):
+        self.calls.append(("Walk", direction))
+        if self.busy:
+            self.busy -= 1
+            return False
+        if direction != self.Direction:
+            self.Direction = direction
+            return True
+        if self.blocked:
+            return False
+        dx, dy = STEPS[direction]
+        p = self.Position
+        self.Position = pos(p.X + dx, p.Y + dy, p.Z)
+        return True
 
 
 class FakeFinder(object):
@@ -167,9 +190,22 @@ class ExecuteTest(unittest.TestCase):
         self.assertEqual(adapter.execute({"type": "use_item", "serial": 9, "target": "self"}),
                          "no target cursor")
 
+    def test_walk_turns_then_steps(self):
+        adapter, api, _ = make_adapter()
+        self.assertEqual(adapter.execute({"type": "walk", "direction": "East"}), "ok")
+        self.assertEqual(api.Player.calls, [("Walk", "East"), ("Walk", "East")])
+        self.assertEqual(api.Player.Position.X, 101)
+
+    def test_walk_retries_once_when_too_soon(self):
+        adapter, api, _ = make_adapter()
+        api.Player.busy = 1
+        self.assertEqual(adapter.execute({"type": "walk", "direction": "North"}), "ok")
+        self.assertEqual(api.Player.Position.Y, 99)
+        self.assertEqual(api.Misc.calls[0][0], "Pause")
+
     def test_blocked_walk(self):
         adapter, api, _ = make_adapter()
-        api.Player.returns["Walk"] = False
+        api.Player.blocked = True
         self.assertEqual(adapter.execute({"type": "walk", "direction": "East"}), "blocked")
 
     def test_unknown_action_raises(self):

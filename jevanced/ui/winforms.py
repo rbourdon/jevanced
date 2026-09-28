@@ -2,7 +2,7 @@
 
 This file only draws what ``JevancedApp.view()`` returns and forwards
 button presses to the app, so the behaviour behind it is unit-tested
-without Windows. The window itself has not been run in the client yet.
+without Windows. The window was checked in Razor Enhanced 1.0.0.14.
 
 The window runs on its own STA thread; Razor Enhanced's script thread
 stays free to run the game loop.
@@ -66,7 +66,9 @@ def _button(parent, text, x, y, w, h, handler):
 class JevancedForm(Form):
     def __init__(self, app):
         self.app = app
-        self._syncing = False
+        # Setting up the checkboxes fires their change events; ignore those
+        # until every control exists.
+        self._syncing = True
         self._last_log = None
 
         self.Text = "jevanced"
@@ -144,8 +146,9 @@ class JevancedForm(Form):
         self.timer = Timer()
         self.timer.Interval = REFRESH_MS
         self.timer.Tick += self._on_tick
-        self.timer.Start()
+        self._syncing = False
         self.refresh_view()
+        self.timer.Start()
 
     def _checkbox(self, text, x, y, w):
         box = CheckBox()

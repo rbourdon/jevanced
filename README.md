@@ -9,10 +9,13 @@ what it's doing.
 
 ## Status
 
-- **Not yet run in the UO client.** Everything that doesn't touch the game
-  is unit-tested (on CPython and on IronPython 3.4, Razor Enhanced's engine),
-  but the Razor Enhanced adapter and the window haven't been tried against a
-  live client yet.
+- **Run in a test client, not yet on Windows.** Razor Enhanced 1.0.0.14 in
+  ClassicUO, against a private local ModernUO shard, running under Wine. The
+  window, key storage, dry run, the STOP button and every action (walk,
+  path-to, attack, war mode, skills, items with a target, speech) worked
+  there. It still needs a run on a real Windows install before it's called
+  working. Everything that doesn't touch the game is unit-tested on CPython
+  and on IronPython 3.4, Razor Enhanced's engine.
 - **Not yet talking to Jev.** Typesafe's Jev API docs aren't in hand, so no
   endpoints are guessed. Until they are, an **offline stub** makes the
   decisions: it bandages your character when below 60% health and otherwise
@@ -21,19 +24,21 @@ what it's doing.
 
 ## Install
 
-1. Build the zip (or download it from the CI run's artifacts):
+In PowerShell on the computer you play on, run:
 
-   ```
-   python tools/build.py
-   ```
+```
+irm https://raw.githubusercontent.com/rbourdon/jevanced/main/install.ps1 | iex
+```
 
-2. Unzip `dist/jevanced-<version>.zip` into Razor Enhanced's `Scripts`
-   folder, so `run_jevanced.py` and the `jevanced` folder sit side by side.
-3. In Razor Enhanced, open the **Scripting** tab, add `run_jevanced.py`,
-   select it and press **Play**. The jevanced window opens.
+It finds Razor Enhanced, downloads the latest release and puts it in Razor
+Enhanced's `Scripts` folder. Run the same line again to update. Then, in
+Razor Enhanced: **Scripting** tab > **Add** > `run_jevanced.py` > **Play**.
 
-Requires a Razor Enhanced build that runs scripts on IronPython 3.4
-(0.8.x and later).
+If you'd rather do it by hand, download `jevanced.zip` from the
+[latest release](https://github.com/rbourdon/jevanced/releases/latest) and
+unzip it into Razor Enhanced's `Scripts` folder.
+
+Needs Razor Enhanced 0.8 or later (its scripts run on IronPython 3.4).
 
 ## Use
 
@@ -86,6 +91,12 @@ jevanced/
 
 The game loop runs on Razor Enhanced's script thread; the window runs on
 its own thread and only calls `JevancedApp` methods.
+
+## Releasing
+
+Bump `__version__` in `jevanced/__init__.py` in a PR. When it merges to
+`main`, the Release workflow tests, builds and publishes `v<version>` with
+`jevanced.zip` attached, and the installer picks it up.
 
 ## Development
 

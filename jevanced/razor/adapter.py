@@ -6,10 +6,17 @@ script imports. The launcher collects them into a ``RazorApi`` and hands
 that to ``RazorAdapter``; everything else in jevanced talks to the game
 through the adapter's two methods, ``read_state`` and ``execute``.
 
-NOT YET VERIFIED IN THE CLIENT. The calls below follow Razor Enhanced's
-published API, but nothing here has been run against a live UO client yet.
-Reads are defensive (a missing property reads as a default) so a version
-difference degrades one field rather than stopping the loop.
+Checked against Razor Enhanced 1.0.0.14 running in ClassicUO. Two things
+learned there:
+
+- Razor Enhanced's ``Player`` object answers ``Player.Hits`` but raises
+  AttributeError when the same property is looked up with the getattr
+  builtin, so every read here is a plain attribute access in a lambda.
+- ``Player.Walk(direction)`` only turns the character when it faces
+  another way, and returns False if called again too soon, so a walk
+  action turns first and retries the step once.
+- Reads are defensive (a failing property reads as a default) so a version
+  difference degrades one field rather than stopping the loop.
 """
 
 import time
@@ -21,6 +28,7 @@ MAX_GROUND_ITEMS = 25
 MAX_BACKPACK_ITEMS = 60
 MAX_JOURNAL_LINES = 20
 TARGET_TIMEOUT_MS = 2000
+WALK_RETRY_MS = 250
 
 
 class RazorApi(object):
@@ -36,19 +44,27 @@ class RazorApi(object):
         self.Misc = Misc
 
 
-def _get(obj, name, default=None):
+def _read(fn, default=None):
+    """Call ``fn`` (a lambda doing one attribute read); default on failure."""
     try:
-        value = getattr(obj, name)
+        value = fn()
     except Exception:
         return default
     return default if value is None else value
 
 
-def _position(obj):
-    pos = _get(obj, "Position")
+def _int(fn, default=0):
+    try:
+        return int(_read(fn, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _position(fn):
+    pos = _read(fn)
     if pos is None:
         return (0, 0, 0)
-    return (int(_get(pos, "X", 0)), int(_get(pos, "Y", 0)), int(_get(pos, "Z", 0)))
+    return (_int(lambda: pos.X), _int(lambda: pos.Y), _int(lambda: pos.Z))
 
 
 class RazorAdapter(object):
@@ -60,27 +76,28 @@ class RazorAdapter(object):
     # ---- reading -------------------------------------------------------
 
     def is_connected(self):
-        return bool(_get(self.api.Player, "Connected", False))
+        player = self.api.Player
+        return bool(_read(lambda: player.Connected, False))
 
     def read_state(self, scan_range=12):
-        player = self.api.Player
+        p = self.api.Player
         me = PlayerState(
-            serial=int(_get(player, "Serial", 0)),
-            name=str(_get(player, "Name", "")),
-            hits=int(_get(player, "Hits", 0)),
-            hits_max=int(_get(player, "HitsMax", 0)),
-            mana=int(_get(player, "Mana", 0)),
-            mana_max=int(_get(player, "ManaMax", 0)),
-            stam=int(_get(player, "Stam", 0)),
-            stam_max=int(_get(player, "StamMax", 0)),
-            position=_position(player),
-            map_id=int(_get(player, "Map", 0)),
-            war_mode=bool(_get(player, "WarMode", False)),
-            is_ghost=bool(_get(player, "IsGhost", False)),
-            poisoned=bool(_get(player, "Poisoned", False)),
-            weight=int(_get(player, "Weight", 0)),
-            max_weight=int(_get(player, "MaxWeight", 0)),
-            gold=int(_get(player, "Gold", 0)),
+            serial=_int(lambda: p.Serial),
+            name=str(_read(lambda: p.Name, "")),
+            hits=_int(lambda: p.Hits),
+            hits_max=_int(lambda: p.HitsMax),
+            mana=_int(lambda: p.Mana),
+            mana_max=_int(lambda: p.ManaMax),
+            stam=_int(lambda: p.Stam),
+            stam_max=_int(lambda: p.StamMax),
+            position=_position(lambda: p.Position),
+            map_id=_int(lambda: p.Map),
+            war_mode=bool(_read(lambda: p.WarMode, False)),
+            is_ghost=bool(_read(lambda: p.IsGhost, False)),
+            poisoned=bool(_read(lambda: p.Poisoned, False)),
+            weight=_int(lambda: p.Weight),
+            max_weight=_int(lambda: p.MaxWeight),
+            gold=_int(lambda: p.Gold),
         )
         return GameState(
             player=me,
@@ -99,17 +116,17 @@ class RazorAdapter(object):
         flt.RangeMax = scan_range
         found = []
         for mob in list(mobiles.ApplyFilter(flt) or [])[:MAX_MOBILES + 1]:
-            serial = int(_get(mob, "Serial", 0))
+            serial = _int(lambda: mob.Serial)
             if not serial or serial == own_serial:
                 continue
             found.append(MobileState(
                 serial=serial,
-                name=str(_get(mob, "Name", "")),
-                hits=int(_get(mob, "Hits", 0)),
-                hits_max=int(_get(mob, "HitsMax", 0)),
-                notoriety=int(_get(mob, "Notoriety", 0)),
-                position=_position(mob),
-                body=int(_get(mob, "Body", _get(mob, "MobileID", 0))),
+                name=str(_read(lambda: mob.Name, "")),
+                hits=_int(lambda: mob.Hits),
+                hits_max=_int(lambda: mob.HitsMax),
+                notoriety=_int(lambda: mob.Notoriety),
+                position=_position(lambda: mob.Position),
+                body=_int(lambda: mob.Body),
             ))
         return found[:MAX_MOBILES]
 
@@ -125,19 +142,20 @@ class RazorAdapter(object):
         return found
 
     def _read_backpack(self):
-        backpack = _get(self.api.Player, "Backpack")
+        player = self.api.Player
+        backpack = _read(lambda: player.Backpack)
         if backpack is None:
             return []
-        contents = _get(backpack, "Contains", []) or []
+        contents = _read(lambda: backpack.Contains, []) or []
         return [self._item(i) for i in list(contents)[:MAX_BACKPACK_ITEMS]]
 
     def _item(self, item, with_position=False):
         return ItemState(
-            serial=int(_get(item, "Serial", 0)),
-            item_id=int(_get(item, "ItemID", 0)),
-            name=str(_get(item, "Name", "")),
-            amount=int(_get(item, "Amount", 1)),
-            position=_position(item) if with_position else (0, 0, 0),
+            serial=_int(lambda: item.Serial),
+            item_id=_int(lambda: item.ItemID),
+            name=str(_read(lambda: item.Name, "")),
+            amount=_int(lambda: item.Amount, 1),
+            position=_position(lambda: item.Position) if with_position else (0, 0, 0),
         )
 
     def _read_journal(self):
@@ -153,12 +171,13 @@ class RazorAdapter(object):
         lines = []
         for entry in entries[-MAX_JOURNAL_LINES:]:
             lines.append(JournalLine(
-                text=str(_get(entry, "Text", "")),
-                speaker=str(_get(entry, "Name", "")),
-                serial=int(_get(entry, "Serial", 0)),
+                text=str(_read(lambda: entry.Text, "")),
+                speaker=str(_read(lambda: entry.Name, "")),
+                serial=_int(lambda: entry.Serial),
             ))
         if entries:
-            self._journal_after = float(_get(entries[-1], "Timestamp", self._clock()))
+            last = entries[-1]
+            self._journal_after = float(_read(lambda: last.Timestamp, self._clock()))
         return lines
 
     # ---- acting --------------------------------------------------------
@@ -177,8 +196,7 @@ class RazorAdapter(object):
         if kind == "attack":
             api.Player.Attack(action["serial"])
         elif kind == "walk":
-            if not api.Player.Walk(action["direction"]):
-                return "blocked"
+            return self._walk(action["direction"])
         elif kind == "move_to":
             api.Player.PathFindTo(action["x"], action["y"], action["z"])
         elif kind == "use_skill":
@@ -196,6 +214,18 @@ class RazorAdapter(object):
             api.Player.ChatSay(action["text"])
         else:
             raise ValueError("adapter can't execute {0!r}".format(kind))
+        return "ok"
+
+    def _walk(self, direction):
+        player = self.api.Player
+        if _read(lambda: player.Direction) != direction:
+            player.Walk(direction)  # turn to face it; this doesn't step
+        before = _position(lambda: player.Position)
+        if not player.Walk(direction):
+            self.api.Misc.Pause(WALK_RETRY_MS)
+            player.Walk(direction)
+        if _position(lambda: player.Position) == before:
+            return "blocked"
         return "ok"
 
     def _apply_target(self, target):

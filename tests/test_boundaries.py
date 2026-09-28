@@ -28,6 +28,12 @@ class BoundaryTest(unittest.TestCase):
                             offenders.append("{0}:{1}".format(rel, number))
         self.assertEqual(offenders, [])
 
+    def test_adapter_reads_razor_objects_without_getattr(self):
+        # In Razor Enhanced 1.0, Player.Hits works but getattr(Player, "Hits")
+        # raises, so the adapter must use plain attribute access.
+        with open(os.path.join(ROOT, "jevanced", "razor", "adapter.py")) as handle:
+            self.assertFalse("getattr(" in handle.read(), "adapter.py uses getattr")
+
     def test_no_dataclasses_in_shipped_code(self):
         # Razor Enhanced's IronPython 3.4 has no dataclasses module.
         for folder, _, files in os.walk(os.path.join(ROOT, "jevanced")):
