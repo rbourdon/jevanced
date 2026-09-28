@@ -2,7 +2,7 @@ import json
 import unittest
 
 from jevanced.jev import JevAuthError, JevResponseError, JevUnavailableError, make_client
-from jevanced.jev.typesafe import TypesafeJevClient
+from jevanced.jev.typesafe import STOP_CONFIDENCE, TypesafeJevClient
 from tests.test_choices import mob, state
 
 KEY = "ts-test-key-1234"
@@ -79,6 +79,31 @@ class DecideTest(unittest.TestCase):
         self.assertEqual(question["type"], "choice")
         self.assertEqual(sorted(question["criteria"]), ["step_away", "wait"])
         self.assertIn("confidence 0.90", c.last_note)
+
+    def test_unsure_stop_takes_the_next_likeliest_move(self):
+        s = state(hits=50)
+        s["task"] = {"name": "lumberjack", "instructions": "Stop if a player comes"}
+        s["backpack"].append({"serial": 0x40000002, "item_id": 0x0F43, "name": "hatchet", "amount": 1})
+        s["trees"] = [{"position": [101, 100, 0], "tile_id": 0x0CD0, "distance": 1}]
+        c, _ = client(chose("stop", confidence=STOP_CONFIDENCE - 0.1, probabilities={
+            "stop": 0.45, "equip_axe": 0.35, "bandage_self": 0.15, "wait": 0.05}))
+        self.assertEqual(c.decide(s), {"type": "equip", "serial": 0x40000002})
+        self.assertIn("Not sure enough to stop", c.last_note)
+
+    def test_sure_stop_ends_the_session(self):
+        s = state(hits=50)
+        s["task"] = {"name": "lumberjack", "instructions": "Stop if a player comes"}
+        s["backpack"].append({"serial": 0x40000002, "item_id": 0x0F43, "name": "hatchet", "amount": 1})
+        s["trees"] = [{"position": [101, 100, 0], "tile_id": 0x0CD0, "distance": 1}]
+        c, _ = client(chose("stop", confidence=0.8))
+        self.assertEqual(c.decide(s)["type"], "stop")
+
+    def test_code_ends_a_finished_task_without_asking(self):
+        s = state()
+        s["task"] = {"name": "lumberjack", "instructions": ""}
+        c, t = client()
+        self.assertEqual(c.decide(s), {"type": "stop", "reason": "No axe to chop with."})
+        self.assertEqual(t.requests, [])
 
     def test_unsure_answers_still_happen(self):
         c, _ = client(chose("bandage_self", confidence=0.2, probabilities={

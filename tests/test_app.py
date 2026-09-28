@@ -86,7 +86,7 @@ class AppTest(unittest.TestCase):
         self.assertTrue(app.serve_once(0))
         view = app.view()
         self.assertEqual(view["status"], "stopped")
-        self.assertIn("Jev ended the session: test", view["detail"])
+        self.assertIn("Finished: test", view["detail"])
         self.assertEqual(view["backend"], "Scripted")
         self.assertEqual(view["key_state"], appmod.KEY_VERIFIED)
         self.assertTrue(self.clients[0].closed)

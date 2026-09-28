@@ -8,11 +8,14 @@ API reference: https://docs.typesafe.ai/api
   question over the options built in ``choices``. Jev answers with the
   chosen option, a probability for each option, and a confidence.
 - When waiting is the only option, no request is sent at all.
+- Ending the session needs Jev to be fairly sure (``STOP_CONFIDENCE``).
+  Below that, jevanced takes Jev's next most likely option instead, so an
+  unsure guess doesn't end a lumberjacking run early.
 """
 
 import json
 
-from jevanced.jev import choices
+from jevanced.jev import choices, lumberjack
 from jevanced.jev.client import (
     JevAuthError,
     JevClient,
@@ -26,6 +29,7 @@ API_ROOT = "https://api.typesafe.ai/v1"
 MODEL = "jev-latest"
 QUESTION_ID = "next_action"
 TIMEOUT_S = 10.0
+STOP_CONFIDENCE = 0.6
 
 
 class TypesafeJevClient(JevClient):
@@ -36,6 +40,7 @@ class TypesafeJevClient(JevClient):
         self._transport = transport or default_transport()
         self._root = api_root
         self._last_bandage_at = None
+        self._lumber = lumberjack.Memory()
         self._last_key = None
         self.last_note = ""
 
@@ -46,23 +51,38 @@ class TypesafeJevClient(JevClient):
         return KeyCheck(True, "Jev accepted this key.")
 
     def decide(self, state):
-        options = choices.build_options(state, self._last_bandage_at)
+        self._lumber.observe(state)
+        done = choices.finished(state, self._lumber)
+        if done:
+            return {"type": "stop", "reason": done}
+        options = choices.build_options(state, self._last_bandage_at, self._lumber)
         if len(options) == 1:
             self._note(None, "Nothing to decide, waiting.")
             return options[0].action
         reply = self._call("POST", "/systemone", {
             "model": MODEL,
-            "state": choices.describe_state(state, options),
+            "state": choices.describe_state(state, options, self._lumber),
             "questions": {QUESTION_ID: choices.question(options)},
         })
-        choice, confidence = self._answer(reply)
+        choice, probabilities, confidence = self._answer(reply)
         by_key = dict((o.key, o) for o in options)
         if choice not in by_key:
             raise JevResponseError("Jev chose {0!r}, which wasn't offered".format(choice))
         option = by_key[choice]
-        self._note(option.key, "{0} (confidence {1:.2f})".format(_short(option), confidence))
+        if option.action["type"] == "stop" and confidence < STOP_CONFIDENCE:
+            others = [o for o in options if o.action["type"] != "stop"]
+            option = max(others, key=lambda o: probabilities.get(o.key, 0.0))
+            self._note(option.key, "Not sure enough to stop (confidence {0:.2f}), so: {1}".format(
+                confidence, _short(option)))
+        else:
+            self._note(option.key, "{0} (confidence {1:.2f})".format(_short(option), confidence))
+        now = state.get("timestamp", 0.0)
         if option.key == "bandage_self":
-            self._last_bandage_at = state.get("timestamp", 0.0)
+            self._last_bandage_at = now
+        elif option.key == "chop":
+            self._lumber.chopped(lumberjack.Situation(state, self._lumber).tree_in_reach, now)
+        elif option.key == "go_to_tree":
+            self._lumber.walked_to(lumberjack.Situation(state, self._lumber).next_tree)
         return option.action
 
     def _note(self, key, text):
@@ -95,8 +115,10 @@ class TypesafeJevClient(JevClient):
     def _answer(reply):
         try:
             answer = reply["answers"][QUESTION_ID]
-            return str(answer["choice"]), float(answer["confidence"])
-        except (KeyError, TypeError, ValueError):
+            probabilities = dict((str(k), float(v))
+                                 for k, v in (answer.get("probabilities") or {}).items())
+            return str(answer["choice"]), probabilities, float(answer["confidence"])
+        except (AttributeError, KeyError, TypeError, ValueError):
             raise JevResponseError("Jev's reply had no usable answer")
 
 

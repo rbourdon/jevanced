@@ -34,7 +34,7 @@ class ControllerTest(unittest.TestCase):
         snap = self.run_with(client, fast(dry_run=False))
         self.assertEqual(self.game.executed, [{"type": "walk", "direction": "North"}])
         self.assertEqual(snap["status"], ctl.STOPPED)
-        self.assertIn("Jev ended the session: done", snap["detail"])
+        self.assertIn("Finished: done", snap["detail"])
         self.assertEqual(snap["ticks"], 2)
 
     def test_dry_run_executes_nothing(self):
@@ -128,6 +128,22 @@ class ControllerTest(unittest.TestCase):
         notes = [line for line in self.log.lines() if "Jev: " in line]
         self.assertEqual(len(notes), 2)
         self.assertTrue(notes[-1].endswith("Jev: Chose: step away"))
+
+    def test_passes_the_task_and_reads_trees_for_lumberjacking(self):
+        seen = []
+
+        class Recording(ScriptedClient):
+            def decide(self, state):
+                seen.append(state["task"])
+                return {"type": "stop"}
+        self.run_with(Recording(), fast(task="lumberjack", instructions="Stay near the road",
+                                        wood_goal=100))
+        self.assertEqual(seen, [{"name": "lumberjack", "instructions": "Stay near the road",
+                                 "wood_goal": 100}])
+        self.assertTrue(self.game.read_trees)
+        self.assertTrue(any("Started: Lumberjack" in line for line in self.log.lines()))
+        self.assertTrue(any("Stopping at 100 wood." in line for line in self.log.lines()))
+        self.assertTrue(any("Your instructions: Stay near the road" in line for line in self.log.lines()))
 
     def test_notifies_in_game_on_start_and_stop(self):
         self.run_with(ScriptedClient([{"type": "stop"}]), fast())

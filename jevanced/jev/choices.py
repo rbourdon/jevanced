@@ -12,7 +12,11 @@ than raw numbers, and other players' chat is left out because text in the
 state can steer the answer.
 """
 
+from jevanced import tasks
 from jevanced.actions import DIRECTIONS
+from jevanced.jev import lumberjack
+from jevanced.jev.option import Option  # noqa: F401 (re-exported)
+from jevanced.state import is_game_message
 
 BANDAGE_ITEM_ID = 0x0E21
 BANDAGE_COOLDOWN_S = 10.0
@@ -37,18 +41,25 @@ MAX_MESSAGES = 5
 # jevanced never starts a fight: there is no attack option.
 GOAL = ("Stay alive and out of fights. Keep away from monsters and hostile "
         "creatures that come close. Heal yourself when you are hurt.")
+GOALS = {
+    tasks.STAY_SAFE: GOAL,
+    tasks.LUMBERJACK: (
+        "Chop wood with your axe: keep chopping the tree in reach until it has "
+        "no wood left, then walk to the next tree. Follow the player's "
+        "instructions. Stay out of fights: step away from monsters that "
+        "come close, and heal yourself when you are hurt."),
+}
+WAIT_WHEN = {
+    tasks.STAY_SAFE: ("Do nothing this turn. Right when no monster is within "
+                      "a few tiles and you don't need healing."),
+    tasks.LUMBERJACK: ("Do nothing this turn. Right only while a chop is "
+                       "still under way, or when no other move fits."),
+}
 
 INSTRUCTIONS = ("You control the character described in `you`, following `goal`. "
                 "Which one action should the character take right now?")
 
 WAIT = {"type": "wait", "ms": 1000}
-
-
-class Option(object):
-    def __init__(self, key, description, action):
-        self.key = key
-        self.description = description
-        self.action = action
 
 
 def health_words(hits, hits_max):
@@ -117,12 +128,18 @@ def direction_away(from_pos, own_pos):
     return DIRECTIONS[table.get((dx, dy), 0)]
 
 
-def build_options(state, last_bandage_at=None):
+def task_of(state):
+    task = state.get("task") or {}
+    name = task.get("name")
+    return name if name in tasks.NAMES else tasks.STAY_SAFE
+
+
+def build_options(state, last_bandage_at=None, lumber=None):
     """The moves worth considering now. "wait" is always first."""
     player = state.get("player", {})
     now = state.get("timestamp", 0.0)
-    options = [Option("wait", "Do nothing this turn. Right when no monster is within "
-                              "a few tiles and you don't need healing.", WAIT)]
+    task = task_of(state)
+    options = [Option("wait", WAIT_WHEN[task], WAIT)]
 
     hits, hits_max = player.get("hits", 0), player.get("hits_max", 0)
     bandages = _bandages(state)
@@ -143,11 +160,23 @@ def build_options(state, last_bandage_at=None):
             "attack you.".format(_who(nearest), _tiles(nearest.get("distance", 0))),
             {"type": "walk",
              "direction": direction_away(nearest["position"], player.get("position", [0, 0, 0]))}))
+
+    if task == tasks.LUMBERJACK:
+        options.extend(lumberjack.options(state, lumber or lumberjack.Memory()))
     return options
 
 
-def describe_state(state, options):
+def finished(state, lumber=None):
+    """Why the task is over (decided in code), or None."""
+    if task_of(state) == tasks.LUMBERJACK:
+        return lumberjack.finished(state, lumber or lumberjack.Memory())
+    return None
+
+
+def describe_state(state, options, lumber=None):
     """What Jev sees: the goal, the character, and what's around it."""
+    task = task_of(state)
+    instructions = (state.get("task") or {}).get("instructions") or ""
     player = state.get("player", {})
     bandages = _bandages(state)
     creatures = []
@@ -161,9 +190,9 @@ def describe_state(state, options):
         })
     # Only the game's own messages; players' chat could steer Jev.
     messages = [line["text"] for line in state.get("journal", [])
-                if not line.get("speaker") and line.get("text")]
-    return {
-        "goal": GOAL,
+                if is_game_message(line) and line.get("text")]
+    seen = {
+        "goal": GOALS[task],
         "you": {
             "health": health_words(player.get("hits", 0), player.get("hits_max", 0)),
             "poisoned": "yes" if player.get("poisoned") else "no",
@@ -174,6 +203,11 @@ def describe_state(state, options):
         "creatures nearby": creatures,
         "recent game messages": messages[-MAX_MESSAGES:],
     }
+    if instructions:
+        seen["player's instructions"] = instructions
+    if task == tasks.LUMBERJACK:
+        seen["lumberjacking"] = lumberjack.describe(state, lumber or lumberjack.Memory())
+    return seen
 
 
 def question(options):

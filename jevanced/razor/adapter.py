@@ -17,6 +17,9 @@ learned there:
   action turns first and retries the step once.
 - Creature kinds (monster, animal...) come from the client's mobtypes.txt,
   found through the Ultima library Razor Enhanced has already loaded.
+- Trees are map tiles, not items, so they're found with
+  ``Statics.GetStaticsTileInfo``. Map tiles never change, so each tile is
+  looked up once and remembered.
 - Reads are defensive (a failing property reads as a default) so a version
   difference degrades one field rather than stopping the loop.
 """
@@ -25,12 +28,14 @@ import io
 import time
 
 from jevanced.bodykinds import parse_mobtypes
+from jevanced.lumber import is_tree
 from jevanced.state import (
     GameState,
     ItemState,
     JournalLine,
     MobileState,
     PlayerState,
+    TreeState,
 )
 
 MAX_MOBILES = 25
@@ -39,13 +44,19 @@ MAX_BACKPACK_ITEMS = 60
 MAX_JOURNAL_LINES = 20
 TARGET_TIMEOUT_MS = 2000
 WALK_RETRY_MS = 250
+TREE_RANGE = 10  # tiles
+HAND_LAYERS = ("RightHand", "LeftHand")
 
 
 class RazorApi(object):
     """Holder for the Razor Enhanced API objects the launcher passes in."""
 
-    def __init__(self, Player, Mobiles, Items, Target, Spells, Journal, Misc):
+    def __init__(self, Player, Mobiles, Items, Target, Spells, Journal, Misc,
+                 Statics=None):
         self.Player = Player
+        # Razor Enhanced keeps a script's source cached until it restarts,
+        # so a launcher from an older jevanced may not pass Statics in.
+        self.Statics = Statics if Statics is not None else _razor_statics()
         self.Mobiles = Mobiles
         self.Items = Items
         self.Target = Target
@@ -55,17 +66,40 @@ class RazorApi(object):
 
     def mobtypes_path(self):
         """Path to the client's mobtypes.txt, or None if it can't be found."""
+        if not _loaded_assembly("Ultima"):
+            return None
         try:
-            import clr
-            from System import AppDomain
+            from Ultima import Files
 
-            for assembly in AppDomain.CurrentDomain.GetAssemblies():
-                if assembly.GetName().Name == "Ultima":
-                    clr.AddReference(assembly)
-                    from Ultima import Files
-                    return Files.GetFilePath("mobtypes.txt")
+            return Files.GetFilePath("mobtypes.txt")
         except Exception:
-            pass
+            return None
+
+
+def _loaded_assembly(name):
+    """Reference an assembly Razor Enhanced already loaded; True if found."""
+    try:
+        import clr
+        from System import AppDomain
+
+        for assembly in AppDomain.CurrentDomain.GetAssemblies():
+            if assembly.GetName().Name == name:
+                clr.AddReference(assembly)
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _razor_statics():
+    """Razor Enhanced's Statics class, looked up directly, or None."""
+    if not _loaded_assembly("RazorEnhanced"):
+        return None
+    try:
+        import RazorEnhanced
+
+        return RazorEnhanced.Statics
+    except Exception:
         return None
 
 
@@ -98,6 +132,7 @@ class RazorAdapter(object):
         self._clock = clock
         self._journal_after = None
         self._body_kinds = None
+        self._tiles = {}  # (map, x, y) -> trees on that tile
 
     # ---- reading -------------------------------------------------------
 
@@ -105,7 +140,7 @@ class RazorAdapter(object):
         player = self.api.Player
         return bool(_read(lambda: player.Connected, False))
 
-    def read_state(self, scan_range=12):
+    def read_state(self, scan_range=12, trees=False):
         p = self.api.Player
         me = PlayerState(
             serial=_int(lambda: p.Serial),
@@ -130,6 +165,8 @@ class RazorAdapter(object):
             mobiles=self._read_mobiles(scan_range, me.serial),
             ground_items=self._read_ground_items(scan_range),
             backpack=self._read_backpack(),
+            equipped=self._read_equipped(),
+            trees=self._read_trees(me) if trees else [],
             journal=self._read_journal(),
             connected=self.is_connected(),
             timestamp=self._clock(),
@@ -191,6 +228,40 @@ class RazorAdapter(object):
         contents = _read(lambda: backpack.Contains, []) or []
         return [self._item(i) for i in list(contents)[:MAX_BACKPACK_ITEMS]]
 
+    def _read_equipped(self):
+        player = self.api.Player
+        found = []
+        for layer in HAND_LAYERS:
+            item = _read(lambda: player.GetItemOnLayer(layer))
+            if item is not None:
+                found.append(self._item(item))
+        return found
+
+    def _read_trees(self, me):
+        statics = self.api.Statics
+        if statics is None:
+            return []
+        px, py = me.position[0], me.position[1]
+        found = []
+        for x in range(px - TREE_RANGE, px + TREE_RANGE + 1):
+            for y in range(py - TREE_RANGE, py + TREE_RANGE + 1):
+                key = (me.map_id, x, y)
+                if key not in self._tiles:
+                    self._tiles[key] = self._trees_at(statics, x, y, me.map_id)
+                for tile_id, z in self._tiles[key]:
+                    found.append(TreeState(position=(x, y, z), tile_id=tile_id))
+        return found
+
+    def _trees_at(self, statics, x, y, map_id):
+        tiles = _read(lambda: statics.GetStaticsTileInfo(x, y, map_id), []) or []
+        trees = []
+        for tile in list(tiles):
+            tile_id = _int(lambda: tile.StaticID)
+            if is_tree(tile_id):
+                trees.append((tile_id, _int(lambda: tile.StaticZ)))
+        # A tree is a trunk tile plus a leaves tile on the same spot; one will do.
+        return tuple(sorted(trees)[:1])
+
     def _item(self, item, with_position=False):
         return ItemState(
             serial=_int(lambda: item.Serial),
@@ -248,6 +319,8 @@ class RazorAdapter(object):
         elif kind == "use_item":
             api.Items.UseItem(action["serial"])
             return self._apply_target(action.get("target"))
+        elif kind == "equip":
+            api.Player.EquipItem(action["serial"])
         elif kind == "war_mode":
             api.Player.SetWarMode(action["on"])
         elif kind == "say":
@@ -276,6 +349,8 @@ class RazorAdapter(object):
             return "no target cursor"
         if target == "self":
             tgt.Self()
+        elif isinstance(target, dict):
+            tgt.TargetExecute(target["x"], target["y"], target["z"], target["tile"])
         else:
             tgt.TargetExecute(target)
         return "ok"

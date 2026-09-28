@@ -19,6 +19,15 @@ def notoriety_name(value):
     return NOTORIETY.get(value, "unknown")
 
 
+def is_game_message(line):
+    """True for a journal line (as a dict) that the shard itself sent.
+
+    Razor Enhanced labels those with the speaker "System" and serial -1.
+    Anything with a real serial came from a player, creature or item.
+    """
+    return line.get("serial", 0) <= 0 and line.get("speaker") in ("", "System")
+
+
 def distance(a, b):
     """UO tile distance: the larger of the x and y offsets."""
     return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
@@ -122,6 +131,20 @@ class ItemState(object):
         return d
 
 
+class TreeState(object):
+    """A tree tile on the map (trees are map tiles, not items)."""
+
+    def __init__(self, position, tile_id):
+        self.position = tuple(position)
+        self.tile_id = tile_id
+
+    def to_dict(self, origin=None):
+        d = {"position": list(self.position), "tile_id": self.tile_id}
+        if origin is not None:
+            d["distance"] = distance(origin, self.position)
+        return d
+
+
 class JournalLine(object):
     def __init__(self, text, speaker="", serial=0):
         self.text = text
@@ -136,11 +159,16 @@ class GameState(object):
     """Everything jevanced knows about the world at one tick."""
 
     def __init__(self, player, mobiles=None, ground_items=None, backpack=None,
-                 journal=None, connected=True, timestamp=0.0):
+                 journal=None, connected=True, timestamp=0.0, equipped=None,
+                 trees=None):
         self.player = player
         self.mobiles = list(mobiles or [])
         self.ground_items = list(ground_items or [])
         self.backpack = list(backpack or [])
+        # What's in the character's hands.
+        self.equipped = list(equipped or [])
+        # Trees nearby; only read when the task needs them.
+        self.trees = list(trees or [])
         self.journal = list(journal or [])
         self.connected = connected
         self.timestamp = timestamp
@@ -157,6 +185,7 @@ class GameState(object):
                          key=lambda m: distance(origin, m.position))
         items = sorted(self.ground_items,
                        key=lambda i: distance(origin, i.position))
+        trees = sorted(self.trees, key=lambda t: distance(origin, t.position))
         return {
             "timestamp": self.timestamp,
             "connected": self.connected,
@@ -164,5 +193,7 @@ class GameState(object):
             "mobiles": [m.to_dict(origin) for m in mobiles],
             "ground_items": [i.to_dict(origin) for i in items],
             "backpack": [i.to_dict() for i in self.backpack],
+            "equipped": [i.to_dict() for i in self.equipped],
+            "trees": [t.to_dict(origin) for t in trees],
             "journal": [line.to_dict() for line in self.journal],
         }

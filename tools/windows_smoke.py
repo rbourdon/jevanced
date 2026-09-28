@@ -41,7 +41,7 @@ class FakeGame(object):
     def is_connected(self):
         return True
 
-    def read_state(self, scan_range=12):
+    def read_state(self, scan_range=12, trees=False):
         self.state.timestamp = time.time()
         return self.state
 
@@ -105,6 +105,20 @@ def run(data_dir):
         raw = f.read()
     check(TEST_KEY.encode("ascii") not in raw, "key isn't on disk in the clear")
     check(KeyStore(key_path).load() == TEST_KEY, "a fresh key store decrypts the key")
+
+    def pick_lumberjack():
+        form.task_box.SelectedIndex = 1
+        form.instructions_box.Text = "Keep to this grove"
+        form.wood_box.Value = 150
+    on_ui(form, pick_lumberjack)
+    check(app.settings.task == "lumberjack", "task picker sets the task")
+    check(app.settings.instructions == "Keep to this grove", "instructions box saves")
+    check(app.settings.wood_goal == 150, "wood goal box saves")
+
+    def pick_stay_safe():
+        form.task_box.SelectedIndex = 0
+    on_ui(form, pick_stay_safe)
+    check(app.settings.task == "stay_safe", "task picker switches back")
 
     server = threading.Thread(target=app.serve)
     server.daemon = True

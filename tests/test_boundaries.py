@@ -5,7 +5,8 @@ import re
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RAZOR_NAMES = re.compile(r"\b(Player|Mobiles|Items|Target|Spells|Journal|Misc|Gumps)\.[A-Z]")
+# A bare Razor Enhanced global, not an attribute such as ``combo.Items.Add``.
+RAZOR_NAMES = re.compile(r"(?<![.\w])(Player|Mobiles|Items|Target|Spells|Journal|Misc|Gumps|Statics)\.[A-Z]")
 ALLOWED = {
     os.path.join("jevanced", "razor", "adapter.py"),
 }

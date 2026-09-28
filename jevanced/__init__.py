@@ -7,4 +7,4 @@ talks to the Razor Enhanced API, and only ``jevanced.ui.winforms`` and
 ``jevanced.keystore``'s DPAPI helper touch .NET.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

@@ -172,6 +172,34 @@ class ReadStateTest(unittest.TestCase):
         self.assertEqual([line.text for line in lines], ["You see an orc"])
         self.assertEqual(adapter.read_state().journal, [])
 
+    def test_reads_what_is_in_hand(self):
+        adapter, api, _ = make_adapter()
+        hatchet = Obj(Serial=7, ItemID=0x0F43, Name="hatchet", Amount=1)
+        api.Player.GetItemOnLayer = lambda layer: hatchet if layer == "LeftHand" else None
+        self.assertEqual([i.item_id for i in adapter.read_state().equipped], [0x0F43])
+
+    def test_finds_trees_once_per_tile(self):
+        adapter, api, _ = make_adapter()
+        looked = []
+
+        def tiles(x, y, map_id):
+            looked.append((x, y))
+            if (x, y) == (102, 99):
+                return [Obj(StaticID=0x0CD1, StaticZ=0), Obj(StaticID=0x0CD0, StaticZ=0),
+                        Obj(StaticID=0x0EED, StaticZ=0)]
+            return []
+        api.Statics = Obj(GetStaticsTileInfo=tiles)
+        self.assertEqual(adapter.read_state().trees, [])  # only read when asked
+        trees = adapter.read_state(trees=True).trees
+        self.assertEqual([(t.position, t.tile_id) for t in trees], [((102, 99, 0), 0x0CD0)])
+        first = len(looked)
+        adapter.read_state(trees=True)
+        self.assertEqual(len(looked), first)
+
+    def test_no_statics_no_trees(self):
+        adapter, _, _ = make_adapter()
+        self.assertEqual(adapter.read_state(trees=True).trees, [])
+
     def test_journal_errors_are_ignored(self):
         adapter, api, _ = make_adapter()
         api.Journal = None
@@ -201,6 +229,14 @@ class ExecuteTest(unittest.TestCase):
         self.assertEqual(api.Player.calls, [("UseSkill", "Hiding")])
         names = [c[0] for c in api.Target.calls]
         self.assertEqual(names, ["WaitForTarget", "Self", "WaitForTarget", "TargetExecute"])
+
+    def test_equip_and_target_a_tile(self):
+        adapter, api, _ = make_adapter()
+        adapter.execute({"type": "equip", "serial": 7})
+        adapter.execute({"type": "use_item", "serial": 7,
+                         "target": {"x": 101, "y": 99, "z": 0, "tile": 0x0CD0}})
+        self.assertEqual(api.Player.calls, [("EquipItem", 7)])
+        self.assertEqual(api.Target.calls[-1], ("TargetExecute", 101, 99, 0, 0x0CD0))
 
     def test_no_cursor_is_reported(self):
         adapter, api, _ = make_adapter(cursor=False)
