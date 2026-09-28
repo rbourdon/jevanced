@@ -40,6 +40,8 @@ function Find-RazorEnhanced {
         if ($root -eq "C:\") { $depth = 2 }
         $found += Get-ChildItem -Path $root -Filter "RazorEnhanced.exe" -Recurse -Depth $depth `
             -File -ErrorAction SilentlyContinue | ForEach-Object { $_.DirectoryName }
+        # The roots go from most to least likely, so stop at the first hit.
+        if ($found.Count -gt 0) { break }
     }
     $found = $found | Select-Object -Unique
     if ($found.Count -eq 1) { return $found[0] }
