@@ -31,7 +31,6 @@ from jevanced.state import (
     JournalLine,
     MobileState,
     PlayerState,
-    distance,
 )
 
 MAX_MOBILES = 25
@@ -84,12 +83,6 @@ def _int(fn, default=0):
         return int(_read(fn, default))
     except (TypeError, ValueError):
         return default
-
-
-def _sign(n):
-    if n > 0:
-        return 1
-    return -1 if n < 0 else 0
 
 
 def _position(fn):
@@ -242,13 +235,7 @@ class RazorAdapter(object):
         """Carry out one validated action. Returns a short result string."""
         api = self.api
         kind = action["type"]
-        if kind == "attack":
-            # The character only swings in war mode.
-            if not _read(lambda: api.Player.WarMode, False):
-                api.Player.SetWarMode(True)
-            api.Player.Attack(action["serial"])
-            self._close_in(action["serial"])
-        elif kind == "walk":
+        if kind == "walk":
             return self._walk(action["direction"])
         elif kind == "move_to":
             api.Player.PathFindTo(action["x"], action["y"], action["z"])
@@ -268,21 +255,6 @@ class RazorAdapter(object):
         else:
             raise ValueError("adapter can't execute {0!r}".format(kind))
         return "ok"
-
-    def _close_in(self, serial):
-        # Attack only picks the target; the character has to be next to it
-        # to swing, and the client doesn't walk there on its own.
-        mob = _read(lambda: self.api.Mobiles.FindBySerial(serial))
-        if mob is None:
-            return
-        there = _position(lambda: mob.Position)
-        here = _position(lambda: self.api.Player.Position)
-        if distance(here, there) > 1:
-            # Aim for the tile beside it: the pathfinder won't end on an
-            # occupied tile.
-            x = there[0] - _sign(there[0] - here[0])
-            y = there[1] - _sign(there[1] - here[1])
-            self.api.Player.PathFindTo(x, y, there[2])
 
     def _walk(self, direction):
         player = self.api.Player

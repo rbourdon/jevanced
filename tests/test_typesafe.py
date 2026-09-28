@@ -2,7 +2,7 @@ import json
 import unittest
 
 from jevanced.jev import JevAuthError, JevResponseError, JevUnavailableError, make_client
-from jevanced.jev.typesafe import ATTACK_CONFIDENCE, TypesafeJevClient
+from jevanced.jev.typesafe import TypesafeJevClient
 from tests.test_choices import mob, state
 
 KEY = "ts-test-key-1234"
@@ -69,39 +69,32 @@ class DecideTest(unittest.TestCase):
         self.assertEqual(t.requests, [])
 
     def test_sends_one_choice_question_and_returns_its_action(self):
-        c, t = client(chose("attack_1"))
+        c, t = client(chose("step_away"))
         action = c.decide(state(mobiles=[mob(7, 103, 100)]))
-        self.assertEqual(action, {"type": "attack", "serial": 7})
+        self.assertEqual(action, {"type": "walk", "direction": "West"})
         sent = t.requests[0]
         self.assertEqual(sent["url"], "https://api.typesafe.ai/v1/systemone")
         self.assertEqual(sent["body"]["model"], "jev-latest")
         question = sent["body"]["questions"]["next_action"]
         self.assertEqual(question["type"], "choice")
-        self.assertEqual(sorted(question["criteria"]), ["attack_1", "step_away", "wait"])
+        self.assertEqual(sorted(question["criteria"]), ["step_away", "wait"])
         self.assertIn("confidence 0.90", c.last_note)
 
-    def test_unsure_attack_falls_back_to_the_likeliest_safe_move(self):
-        c, _ = client(chose("attack_1", confidence=ATTACK_CONFIDENCE - 0.1, probabilities={
-            "attack_1": 0.5, "step_away": 0.3, "bandage_self": 0.15, "wait": 0.05}))
-        action = c.decide(state(hits=40, mobiles=[mob(7, 101, 100)]))
-        self.assertEqual(action["type"], "walk")
-        self.assertIn("Not sure enough to attack", c.last_note)
-
-    def test_unsure_defensive_moves_still_happen(self):
+    def test_unsure_answers_still_happen(self):
         c, _ = client(chose("bandage_self", confidence=0.2, probabilities={
-            "bandage_self": 0.55, "step_away": 0.43, "attack_1": 0.02}))
+            "bandage_self": 0.55, "step_away": 0.43, "wait": 0.02}))
         action = c.decide(state(hits=12, mobiles=[mob(7, 101, 100)]))
         self.assertEqual(action["type"], "use_item")
 
     def test_note_changes_only_when_the_pick_changes(self):
-        c, _ = client(chose("wait", 0.7), chose("wait", 0.8), chose("attack_1", 0.9))
+        c, _ = client(chose("wait", 0.7), chose("wait", 0.8), chose("step_away", 0.9))
         s = state(mobiles=[mob(7, 103, 100)])
         c.decide(s)
         first = c.last_note
         c.decide(s)
         self.assertEqual(c.last_note, first)
         c.decide(s)
-        self.assertIn("Attack", c.last_note)
+        self.assertIn("Step away", c.last_note)
 
     def test_bandage_starts_a_cooldown(self):
         c, t = client(chose("bandage_self"))

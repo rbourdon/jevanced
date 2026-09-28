@@ -7,10 +7,6 @@ API reference: https://docs.typesafe.ai/api
 - Each decision is one ``POST /v1/systemone`` holding a single Choice
   question over the options built in ``choices``. Jev answers with the
   chosen option, a probability for each option, and a confidence.
-- Attacking is the one move that can go badly wrong, so it needs
-  ``ATTACK_CONFIDENCE``. Below that, jevanced takes Jev's most likely
-  non-attack option instead (bandaging, stepping away or waiting), since
-  waiting while in trouble would be worse than either.
 - When waiting is the only option, no request is sent at all.
 """
 
@@ -29,7 +25,6 @@ from jevanced.jev.http import default_transport
 API_ROOT = "https://api.typesafe.ai/v1"
 MODEL = "jev-latest"
 QUESTION_ID = "next_action"
-ATTACK_CONFIDENCE = 0.5
 TIMEOUT_S = 10.0
 
 
@@ -60,18 +55,12 @@ class TypesafeJevClient(JevClient):
             "state": choices.describe_state(state, options),
             "questions": {QUESTION_ID: choices.question(options)},
         })
-        choice, probabilities, confidence = self._answer(reply)
+        choice, confidence = self._answer(reply)
         by_key = dict((o.key, o) for o in options)
         if choice not in by_key:
             raise JevResponseError("Jev chose {0!r}, which wasn't offered".format(choice))
         option = by_key[choice]
-        if option.action["type"] == "attack" and confidence < ATTACK_CONFIDENCE:
-            safe = [o for o in options if o.action["type"] != "attack"]
-            option = max(safe, key=lambda o: probabilities.get(o.key, 0.0))
-            self._note(option.key, "Not sure enough to attack (confidence {0:.2f}), so: {1}".format(
-                confidence, _short(option)))
-        else:
-            self._note(option.key, "{0} (confidence {1:.2f})".format(_short(option), confidence))
+        self._note(option.key, "{0} (confidence {1:.2f})".format(_short(option), confidence))
         if option.key == "bandage_self":
             self._last_bandage_at = state.get("timestamp", 0.0)
         return option.action
@@ -106,10 +95,8 @@ class TypesafeJevClient(JevClient):
     def _answer(reply):
         try:
             answer = reply["answers"][QUESTION_ID]
-            probabilities = dict((str(k), float(v))
-                                 for k, v in (answer.get("probabilities") or {}).items())
-            return str(answer["choice"]), probabilities, float(answer["confidence"])
-        except (AttributeError, KeyError, TypeError, ValueError):
+            return str(answer["choice"]), float(answer["confidence"])
+        except (KeyError, TypeError, ValueError):
             raise JevResponseError("Jev's reply had no usable answer")
 
 

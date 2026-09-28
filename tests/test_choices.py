@@ -37,24 +37,26 @@ class OptionsTest(unittest.TestCase):
                          ["wait", "bandage_self"])
         self.assertEqual(keys(choices.build_options(state(hits=50, bandages=0))), ["wait"])
 
-    def test_attacks_only_living_targetable_creatures_nearest_first(self):
-        s = state(mobiles=[
-            mob(2, 106, 100),
+    def test_never_offers_to_attack(self):
+        s = state(hits=100, mobiles=[
+            mob(2, 101, 100),
             mob(3, 102, 100, name="a rabbit", kind="animal"),
-            mob(4, 101, 100, notoriety=1, name="a townsperson", kind="human"),
-            mob(5, 101, 101, hits=0, name="a dead orc"),
+            mob(4, 101, 101, notoriety=6, name="a bandit", kind="human"),
         ])
         options = choices.build_options(s)
-        self.assertEqual(keys(options), ["wait", "attack_1", "attack_2", "step_away"])
-        self.assertEqual(options[1].action, {"type": "attack", "serial": 3})
-        self.assertIn("a rabbit, an animal, grey name, free to attack, 2 tiles away", options[1].description)
-        # Step away from the nearest monster (8 tiles east is too far), not the rabbit.
-        self.assertNotIn("rabbit", options[3].description)
+        self.assertEqual(keys(options), ["wait", "step_away"])
+        self.assertNotIn("attack", [o.action["type"] for o in options])
 
-    def test_targets_are_capped(self):
-        s = state(mobiles=[mob(i, 100 + i, 110) for i in range(2, 12)])
-        attacks = [k for k in keys(choices.build_options(s)) if k.startswith("attack")]
-        self.assertEqual(len(attacks), choices.MAX_TARGETS)
+    def test_steps_away_from_the_nearest_living_monster(self):
+        s = state(mobiles=[
+            mob(3, 102, 100, name="a rabbit", kind="animal"),
+            mob(5, 101, 101, hits=0, name="a dead orc"),
+            mob(2, 104, 100),
+        ])
+        options = choices.build_options(s)
+        self.assertEqual(keys(options), ["wait", "step_away"])
+        self.assertEqual(options[1].action, {"type": "walk", "direction": "West"})
+        self.assertIn("Hibub, a monster, neutral (grey), 4 tiles away", options[1].description)
 
     def test_no_step_away_when_hostiles_are_far(self):
         s = state(mobiles=[mob(2, 110, 100)])
@@ -62,7 +64,7 @@ class OptionsTest(unittest.TestCase):
 
     def test_no_step_away_from_animals(self):
         s = state(mobiles=[mob(2, 101, 100, name="a rabbit", kind="animal")])
-        self.assertEqual(keys(choices.build_options(s)), ["wait", "attack_1"])
+        self.assertEqual(keys(choices.build_options(s)), ["wait"])
 
     def test_red_names_are_threats_whatever_their_body(self):
         s = state(mobiles=[mob(2, 101, 100, notoriety=6, name="a bandit", kind="human")])
@@ -91,7 +93,7 @@ class DescribeTest(unittest.TestCase):
         self.assertEqual(described["you"]["health"], "35% (near death)")
         self.assertEqual(described["you"]["can bandage now"], "yes")
         self.assertEqual(described["creatures nearby"][0],
-                         {"name": "Hibub", "kind": "monster", "attitude": "grey name, free to attack",
+                         {"name": "Hibub", "kind": "monster", "attitude": "neutral (grey)",
                           "distance": "3 tiles",
                           "health": "50% (badly hurt)"})
         self.assertEqual(described["recent game messages"], ["You feel ill."])

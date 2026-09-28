@@ -3,8 +3,9 @@
 jevanced lets **Jev**, Typesafe's decision model, drive an Ultima Online
 character through [Razor Enhanced](https://github.com/RazorEnhanced/RazorEnhanced)
 instead of hand-written macros. Each turn it reads the game state through
-Razor Enhanced, lists the moves that make sense (bandage, attack a nearby
-creature, step away, wait), asks Jev which one to take, and carries it out.
+Razor Enhanced, lists the moves that make sense (bandage, step away from a
+monster, wait), asks Jev which one to take, and carries it out. It never
+starts a fight: there is no attack action.
 A small window lets you enter your Jev API key, start and stop, and watch
 what it's doing.
 
@@ -13,7 +14,7 @@ what it's doing.
 - **Run in a test client, not yet on Windows.** Razor Enhanced 1.0.0.14 in
   ClassicUO, against a private local ModernUO shard, running under Wine. The
   window, key storage, dry run, the STOP button and every action (walk,
-  path-to, attack, war mode, skills, items with a target, speech) worked
+  path-to, war mode, skills, items with a target, speech) worked
   there. CI also runs on Windows: it installs with `install.ps1`, runs the
   tests on IronPython for .NET Framework (Razor Enhanced's engine), and
   drives the real window and DPAPI key storage (`tools/windows_smoke.py`).
@@ -21,17 +22,16 @@ what it's doing.
   called working.
 - **Talking to Jev.** jevanced calls Typesafe's System One API
   ([docs](https://docs.typesafe.ai/api)). Jev doesn't invent actions: it
-  picks one of the options jevanced offers and says how sure it is. An
-  attack Jev isn't sure about becomes its likeliest safe move instead. In
-  the test client Jev bandaged when hurt, stepped away from an orc when
-  near death, and picked a fight with an orc at full health, walked up to
-  it and killed it. An offline stub that only bandages is still there for
+  picks one of the options jevanced offers and says how sure it is. In the
+  test client Jev bandaged when hurt and stepped away from an orc that came
+  close. That test character was a staff character with maxed stats, so it
+  says nothing about how a new character would fare. An offline stub that only bandages is still there for
   trying jevanced without a key (set `"backend": "stub"` in
   `settings.json`).
 - **Known gaps.** Razor Enhanced only learns other creatures' health when
-  the shard sends it, so Jev may see a wounded monster as unhurt. Jev
-  doesn't know how strong your character is, so it may pick fights it
-  can't win; keep an eye on it.
+  the shard sends it, so Jev may see a wounded monster as unhurt. For now
+  jevanced only keeps a character alive; it doesn't do a task such as
+  lumberjacking yet.
 
 ## Install
 

@@ -8,7 +8,6 @@ class ValidateTest(unittest.TestCase):
     def test_accepts_each_known_shape(self):
         cases = [
             {"type": "wait", "ms": 500},
-            {"type": "attack", "serial": 123},
             {"type": "walk", "direction": "North"},
             {"type": "move_to", "x": 1000, "y": 2000, "z": -5},
             {"type": "use_skill", "skill": "Hiding"},
@@ -21,16 +20,20 @@ class ValidateTest(unittest.TestCase):
             self.assertEqual(validate(case)["type"], case["type"])
 
     def test_drops_unknown_fields(self):
-        clean = validate({"type": "attack", "serial": 9, "extra": "x"})
-        self.assertEqual(clean, {"type": "attack", "serial": 9})
+        clean = validate({"type": "walk", "direction": "North", "extra": "x"})
+        self.assertEqual(clean, {"type": "walk", "direction": "North"})
 
     def test_rejects_unknown_type(self):
         with self.assertRaises(InvalidAction):
             validate({"type": "drop_everything"})
 
+    def test_there_is_no_attack_action(self):
+        with self.assertRaises(InvalidAction):
+            validate({"type": "attack", "serial": 9}, set(actions.ALL_ACTION_TYPES))
+
     def test_rejects_non_dict(self):
         with self.assertRaises(InvalidAction):
-            validate(["attack", 1])
+            validate(["walk", "North"])
 
     def test_speech_is_off_by_default(self):
         with self.assertRaises(InvalidAction):
@@ -49,9 +52,9 @@ class ValidateTest(unittest.TestCase):
             {"type": "wait", "ms": -1},
             {"type": "wait", "ms": 60000},
             {"type": "wait", "ms": "10"},
-            {"type": "attack", "serial": 0},
-            {"type": "attack", "serial": True},
-            {"type": "attack", "serial": "0x1"},
+            {"type": "use_item", "serial": 0},
+            {"type": "use_item", "serial": True},
+            {"type": "use_item", "serial": "0x1"},
             {"type": "walk", "direction": "north"},
             {"type": "move_to", "x": 1, "y": 2},
             {"type": "move_to", "x": 1, "y": 99999, "z": 0},
@@ -71,8 +74,8 @@ class ValidateTest(unittest.TestCase):
 
 class DescribeTest(unittest.TestCase):
     def test_describe(self):
-        self.assertEqual(actions.describe(validate({"type": "attack", "serial": 0x10})),
-                         "attack 0x00000010")
+        self.assertEqual(actions.describe(validate({"type": "walk", "direction": "East"})),
+                         "walk East")
         self.assertEqual(actions.describe(validate({"type": "use_item", "serial": 1, "target": "self"})),
                          "use item 0x00000001 on self")
         self.assertEqual(actions.describe(validate({"type": "stop"})),

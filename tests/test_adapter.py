@@ -182,31 +182,14 @@ class ReadStateTest(unittest.TestCase):
 class ExecuteTest(unittest.TestCase):
     def test_actions_map_to_razor_calls(self):
         adapter, api, _ = make_adapter()
-        adapter.execute({"type": "attack", "serial": 2})
         adapter.execute({"type": "walk", "direction": "North"})
         adapter.execute({"type": "move_to", "x": 1, "y": 2, "z": 3})
         adapter.execute({"type": "war_mode", "on": True})
         adapter.execute({"type": "say", "text": "hail"})
         self.assertEqual([c for c in api.Player.calls], [
-            ("SetWarMode", True), ("Attack", 2), ("Walk", "North"), ("PathFindTo", 1, 2, 3),
+            ("Walk", "North"), ("PathFindTo", 1, 2, 3),
             ("SetWarMode", True), ("ChatSay", "hail"),
         ])
-
-    def test_attack_walks_up_to_a_distant_target(self):
-        adapter, api, _ = make_adapter()
-        orc = Obj(Serial=2, Position=pos(103, 101))
-        api.Mobiles.FindBySerial = lambda serial: orc if serial == 2 else None
-        adapter.execute({"type": "attack", "serial": 2})
-        # The player is at (100, 100); walk to the tile beside the orc.
-        self.assertEqual(api.Player.calls,
-                         [("SetWarMode", True), ("Attack", 2), ("PathFindTo", 102, 100, 0)])
-
-    def test_attack_stays_put_when_adjacent_and_already_in_war_mode(self):
-        adapter, api, _ = make_adapter()
-        api.Player.WarMode = True
-        api.Mobiles.FindBySerial = lambda serial: Obj(Serial=2, Position=pos(101, 100))
-        adapter.execute({"type": "attack", "serial": 2})
-        self.assertEqual(api.Player.calls, [("Attack", 2)])
 
     def test_targeted_actions(self):
         adapter, api, _ = make_adapter()

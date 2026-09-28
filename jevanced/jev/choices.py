@@ -1,8 +1,8 @@
 """Turns a game state into the options Jev chooses between.
 
 Jev doesn't invent actions. It answers typed questions, so jevanced's own
-code lists the moves that make sense right now (bandage when hurt, attack a
-hostile creature nearby, step away from one, or wait), describes each in
+code lists the moves that make sense right now (bandage when hurt, step
+away from a monster, or wait), describes each in
 plain words, and asks Jev which one to take. Anything that is arithmetic,
 like distances, cooldowns and directions, stays here in code.
 
@@ -16,28 +16,27 @@ from jevanced.actions import DIRECTIONS
 
 BANDAGE_ITEM_ID = 0x0E21
 BANDAGE_COOLDOWN_S = 10.0
-# What UO's name colours mean, in words Jev reads well. Only the ones you
-# can attack without becoming a criminal are offered as targets.
+# What UO's name colours mean, in words Jev reads well.
 ATTITUDE = {
     "innocent": "innocent (blue)",
     "ally": "friendly (green)",
-    "attackable": "grey name, free to attack",
+    "attackable": "neutral (grey)",
     "criminal": "criminal (grey)",
     "enemy": "enemy (orange)",
     "murderer": "hostile (red)",
     "invulnerable": "invulnerable (yellow)",
 }
-TARGETABLE = ("attackable", "criminal", "enemy", "murderer")
 HOSTILE_COLOURS = ("criminal", "enemy", "murderer")
 THREAT_KINDS = ("monster", "sea monster")
 KIND_PHRASE = {"monster": "a monster", "animal": "an animal",
                "sea monster": "a sea monster", "human": "a person"}
-MAX_TARGETS = 5
+MAX_CREATURES = 10
 STEP_AWAY_WITHIN = 6  # tiles
 MAX_MESSAGES = 5
 
-GOAL = ("Stay alive. Fight monsters that come near. Leave animals and people "
-        "alone unless they attack you. Heal yourself when you are hurt.")
+# jevanced never starts a fight: there is no attack option.
+GOAL = ("Stay alive and out of fights. Keep away from monsters and hostile "
+        "creatures that come close. Heal yourself when you are hurt.")
 
 INSTRUCTIONS = ("You control the character described in `you`, following `goal`. "
                 "Which one action should the character take right now?")
@@ -89,13 +88,10 @@ def _who(mob):
     return ", ".join(parts)
 
 
-def _targets(state):
-    """Living creatures you may attack, nearest first (the state is sorted)."""
-    found = []
-    for mob in state.get("mobiles", []):
-        if mob.get("notoriety") in TARGETABLE and mob.get("hits", 0) > 0:
-            found.append(mob)
-    return found
+def _threats(state):
+    """Living monsters and hostile creatures, nearest first (the state is sorted)."""
+    return [mob for mob in state.get("mobiles", [])
+            if _is_threat(mob) and mob.get("hits", 0) > 0]
 
 
 def _bandages(state):
@@ -134,28 +130,17 @@ def build_options(state, last_bandage_at=None):
     if bandages and cooled and 0 < hits < hits_max:
         options.append(Option(
             "bandage_self",
-            "Bandage yourself to heal. Right when you are hurt, unless a hostile "
-            "creature is next to you and you are healthy enough to fight it.",
+            "Bandage yourself to heal. Right when you are hurt and nothing "
+            "dangerous is right next to you.",
             {"type": "use_item", "serial": bandages["serial"], "target": "self"}))
 
-    targets = _targets(state)
-    for i, mob in enumerate(targets[:MAX_TARGETS]):
-        options.append(Option(
-            "attack_{0}".format(i + 1),
-            "Attack {0}, {1} away, at {2}. Right when it is a monster or is "
-            "attacking you, and you are healthy enough to fight.".format(
-                _who(mob), _tiles(mob.get("distance", 0)),
-                health_words(mob.get("hits", 0), mob.get("hits_max", 0))),
-            {"type": "attack", "serial": mob["serial"]}))
-
-    threats = [m for m in targets if _is_threat(m)]
+    threats = _threats(state)
     if threats and threats[0].get("distance", 99) <= STEP_AWAY_WITHIN:
         nearest = threats[0]
         options.append(Option(
             "step_away",
-            "Step away from {0}. Right when you are badly hurt or near death "
-            "and can't bandage, or when it is too dangerous to fight.".format(
-                nearest.get("name") or "the nearest creature"),
+            "Step away from {0}, {1} away. Right when it is close enough to "
+            "attack you.".format(_who(nearest), _tiles(nearest.get("distance", 0))),
             {"type": "walk",
              "direction": direction_away(nearest["position"], player.get("position", [0, 0, 0]))}))
     return options
@@ -166,7 +151,7 @@ def describe_state(state, options):
     player = state.get("player", {})
     bandages = _bandages(state)
     creatures = []
-    for mob in state.get("mobiles", [])[:MAX_TARGETS * 2]:
+    for mob in state.get("mobiles", [])[:MAX_CREATURES]:
         creatures.append({
             "name": mob.get("name") or "a creature",
             "kind": mob.get("kind") or "unknown",

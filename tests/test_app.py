@@ -137,7 +137,7 @@ class AppTest(unittest.TestCase):
         started = threading.Event()
 
         def endless():
-            client = ScriptedClient([{"type": "attack", "serial": 5}] * 100000)
+            client = ScriptedClient([{"type": "walk", "direction": "North"}] * 100000)
             client.after_decide = started.set
             return client
         self.next_client = endless

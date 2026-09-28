@@ -6,7 +6,6 @@ shapes exactly is rejected before it reaches the game.
 Action shapes (dicts):
 
     {"type": "wait", "ms": 1000}
-    {"type": "attack", "serial": 1234}
     {"type": "walk", "direction": "North"}
     {"type": "move_to", "x": 1, "y": 2, "z": 0}
     {"type": "use_skill", "skill": "Hiding", "target": "self" | 1234}
@@ -17,13 +16,15 @@ Action shapes (dicts):
     {"type": "stop", "reason": "done"}
 
 "target" is optional wherever it appears.
+
+There is deliberately no attack action: jevanced doesn't start fights.
 """
 
 import re
 
 DIRECTIONS = ("North", "Right", "East", "Down", "South", "Left", "West", "Up")
 
-ALL_ACTION_TYPES = ("wait", "attack", "walk", "move_to", "use_skill", "cast",
+ALL_ACTION_TYPES = ("wait", "walk", "move_to", "use_skill", "cast",
                     "use_item", "war_mode", "say", "stop")
 
 # Speech is off by default: it puts model-written text in front of other
@@ -91,8 +92,6 @@ def validate(action, allowed=DEFAULT_ALLOWED):
         if not _is_int(ms) or ms < 0 or ms > MAX_WAIT_MS:
             raise InvalidAction("'ms' must be an integer from 0 to {0}".format(MAX_WAIT_MS))
         return {"type": "wait", "ms": ms}
-    if kind == "attack":
-        return {"type": "attack", "serial": _serial(action, "serial")}
     if kind == "walk":
         direction = action.get("direction")
         if direction not in DIRECTIONS:
@@ -144,8 +143,6 @@ def describe(action):
         suffix = " on 0x{0:08X}".format(target)
     if kind == "wait":
         return "wait {0} ms".format(action["ms"])
-    if kind == "attack":
-        return "attack 0x{0:08X}".format(action["serial"])
     if kind == "walk":
         return "walk {0}".format(action["direction"])
     if kind == "move_to":
