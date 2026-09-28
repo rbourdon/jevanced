@@ -84,6 +84,8 @@ def main():
 
 def run(data_dir):
     app = build_app(FakeGame(), data_dir=data_dir)
+    # The offline stub decides, so no request goes to Jev with a fake key.
+    app.update_settings(backend="stub")
     check(app.keystore.encrypted, "key storage uses Windows DPAPI")
 
     window = start_window(app)

@@ -1,4 +1,4 @@
-"""Offline stand-in for Jev, used until Typesafe's API docs are available.
+"""Offline stand-in for Jev (set "backend": "stub" in settings.json).
 
 It never touches the network. It exists so the Razor Enhanced plumbing
 (state reading, action execution, kill switch, UI) can be exercised in the

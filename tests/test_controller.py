@@ -120,6 +120,15 @@ class ControllerTest(unittest.TestCase):
         pause = self.ctl.tick(ScriptedClient([{"type": "wait", "ms": 2500}]), s)
         self.assertEqual(pause, 2.5)
 
+    def test_logs_jevs_note_when_it_changes(self):
+        client = ScriptedClient([{"type": "wait", "ms": 0}] * 3)
+        for note in ("Unsure, waiting.", "Unsure, waiting.", "Chose: attack"):
+            client.last_note = note
+            self.ctl.tick(client, fast())
+        notes = [line for line in self.log.lines() if "Jev: " in line]
+        self.assertEqual(len(notes), 2)
+        self.assertTrue(notes[-1].endswith("Jev: Chose: attack"))
+
     def test_notifies_in_game_on_start_and_stop(self):
         self.run_with(ScriptedClient([{"type": "stop"}]), fast())
         self.assertTrue(self.game.notices[0].startswith("started"))

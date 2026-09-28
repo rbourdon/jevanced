@@ -1,9 +1,8 @@
 """The interface between jevanced and Jev.
 
-Typesafe's Jev API isn't documented to us yet, so this module fixes only
-the shape jevanced needs: check a key, and turn a game state into one
-action. A real client for Jev's HTTP API slots in behind this interface
-once the docs are in hand; nothing else in jevanced has to change.
+This fixes the shape jevanced needs from a decision maker: check a key,
+and turn a game state into one action. ``typesafe.TypesafeJevClient`` is
+the real Jev; ``stub.StubJevClient`` is an offline stand-in.
 """
 
 
@@ -41,6 +40,10 @@ class JevClient(object):
 
     #: Shown in the UI so the user knows what's making decisions.
     display_name = "Jev"
+
+    #: A short line on the last decision (why it waited, what it chose and
+    #: how sure it was). The loop logs it when it changes.
+    last_note = ""
 
     def check_key(self):
         """Return a KeyCheck, or raise JevAuthError if the key is rejected."""

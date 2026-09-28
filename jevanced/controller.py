@@ -34,6 +34,7 @@ class Controller(object):
         self._error_streak = 0
         self._last_action = ""
         self._dry_run = True
+        self._last_note = ""
 
     # ---- status for the UI --------------------------------------------
 
@@ -114,6 +115,10 @@ class Controller(object):
             raise _Fatal("Jev rejected the API key: {0}".format(exc))
         except JevError as exc:
             raise RuntimeError("Jev: {0}".format(exc))
+        note = getattr(client, "last_note", "")
+        if note and note != self._last_note:
+            self.log.info("Jev: " + note)
+        self._last_note = note
 
         try:
             action = actions.validate(proposed, settings.allowed_actions())

@@ -2,8 +2,9 @@
 
 jevanced lets **Jev**, Typesafe's decision model, drive an Ultima Online
 character through [Razor Enhanced](https://github.com/RazorEnhanced/RazorEnhanced)
-instead of hand-written macros. It reads the game state through Razor
-Enhanced, sends it to Jev, checks the action Jev chooses, and carries it out.
+instead of hand-written macros. Each turn it reads the game state through
+Razor Enhanced, lists the moves that make sense (bandage, attack a nearby
+creature, step away, wait), asks Jev which one to take, and carries it out.
 A small window lets you enter your Jev API key, start and stop, and watch
 what it's doing.
 
@@ -18,11 +19,12 @@ what it's doing.
   drives the real window and DPAPI key storage (`tools/windows_smoke.py`).
   It still needs a player to run it in the game on Windows before it's
   called working.
-- **Not yet talking to Jev.** Typesafe's Jev API docs aren't in hand, so no
-  endpoints are guessed. Until they are, an **offline stub** makes the
-  decisions: it bandages your character when below 60% health and otherwise
-  waits. It never attacks, moves or speaks. The real client plugs in behind
-  `jevanced/jev/client.py` without other changes.
+- **Talking to Jev.** jevanced calls Typesafe's System One API
+  ([docs](https://docs.typesafe.ai/api)). Jev doesn't invent actions: it
+  picks one of the options jevanced offers and says how sure it is. An
+  attack Jev isn't sure about becomes its likeliest safe move instead. An
+  offline stub that only bandages is still there for trying jevanced
+  without a key (set `"backend": "stub"` in `settings.json`).
 
 ## Install
 
@@ -81,7 +83,10 @@ jevanced/
   razor/adapter.py       the ONLY module that calls Razor Enhanced (read_state, execute)
   state.py               plain-data game state sent to Jev
   jev/client.py          Jev client interface and errors
-  jev/stub.py            offline stand-in used until the Jev API is wired up
+  jev/choices.py         the options Jev picks from, and the state it sees
+  jev/typesafe.py        the Jev client for Typesafe's API
+  jev/http.py            HTTPS via .NET inside Razor Enhanced, urllib elsewhere
+  jev/stub.py            offline stand-in that only bandages
   actions.py             allowed actions and validation of Jev's reply
   controller.py          the loop: read, decide, validate, check kill switch, act
   killswitch.py          the stop flag every step checks

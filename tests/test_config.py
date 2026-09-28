@@ -29,7 +29,7 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(s.tick_interval_ms, Settings.MIN_TICK_MS)
         self.assertEqual(s.scan_range, 24)
         self.assertEqual(s.max_consecutive_errors, 1)
-        self.assertEqual(s.backend, "stub")
+        self.assertEqual(s.backend, "jev")
 
     def test_round_trip_and_bad_file(self):
         store = SettingsStore(self.path)

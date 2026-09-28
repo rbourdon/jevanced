@@ -28,9 +28,9 @@ class Settings(object):
         "max_consecutive_errors": 5,
         # Let Jev speak in game chat.
         "allow_speech": False,
-        # Which Jev client to use. Only "stub" exists until Typesafe's API
-        # docs are in hand.
-        "backend": "stub",
+        # Who decides: "jev" (Typesafe's API) or "stub" (offline stand-in
+        # that only bandages, for trying jevanced without a key).
+        "backend": "jev",
     }
     MIN_TICK_MS = 250
     MAX_TICK_MS = 60000
@@ -58,8 +58,8 @@ class Settings(object):
         self.max_consecutive_errors = max(errors, 1)
         self.dry_run = bool(self.dry_run)
         self.allow_speech = bool(self.allow_speech)
-        if self.backend not in ("stub",):
-            self.backend = "stub"
+        if self.backend not in ("jev", "stub"):
+            self.backend = self.FIELDS["backend"]
 
     def allowed_actions(self):
         allowed = set(actions.DEFAULT_ALLOWED)
