@@ -43,7 +43,8 @@ function Find-RazorEnhanced {
         # The roots go from most to least likely, so stop at the first hit.
         if ($found.Count -gt 0) { break }
     }
-    $found = $found | Select-Object -Unique
+    # @() keeps a single hit as a list; a bare string would index to its first letter.
+    $found = @($found | Select-Object -Unique)
     if ($found.Count -eq 1) { return $found[0] }
     if ($found.Count -gt 1) {
         Write-Host "Found more than one Razor Enhanced:"
