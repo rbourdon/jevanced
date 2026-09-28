@@ -44,6 +44,7 @@ _api = RazorApi(
     Spells=Spells,  # noqa: F821
     Journal=Journal,  # noqa: F821
     Misc=Misc,  # noqa: F821
+    Statics=Statics,  # noqa: F821
 )
 _app = build_app(RazorAdapter(_api))
 _window = start_window(_app)

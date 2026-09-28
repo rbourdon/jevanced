@@ -13,6 +13,8 @@ class ValidateTest(unittest.TestCase):
             {"type": "use_skill", "skill": "Hiding"},
             {"type": "cast", "spell": "Greater Heal", "target": "self"},
             {"type": "use_item", "serial": 5, "target": 6},
+            {"type": "use_item", "serial": 5, "target": {"x": 1, "y": 2, "z": 0, "tile": 0x0CD0}},
+            {"type": "equip", "serial": 5},
             {"type": "war_mode", "on": False},
             {"type": "stop", "reason": "done"},
         ]
@@ -61,6 +63,9 @@ class ValidateTest(unittest.TestCase):
             {"type": "use_skill", "skill": "Hiding; drop"},
             {"type": "use_skill", "skill": ""},
             {"type": "cast", "spell": "Heal", "target": "everyone"},
+            {"type": "use_item", "serial": 5, "target": {"x": 1, "y": 2, "z": 0}},
+            {"type": "use_item", "serial": 5, "target": {"x": 1, "y": 2, "z": 0, "tile": 0}},
+            {"type": "equip", "serial": -1},
             {"type": "use_item", "serial": 1, "target": -4},
             {"type": "war_mode", "on": "yes"},
         ]
@@ -78,6 +83,11 @@ class DescribeTest(unittest.TestCase):
                          "walk East")
         self.assertEqual(actions.describe(validate({"type": "use_item", "serial": 1, "target": "self"})),
                          "use item 0x00000001 on self")
+        self.assertEqual(actions.describe(validate(
+            {"type": "use_item", "serial": 1, "target": {"x": 5, "y": 6, "z": 0, "tile": 3280}})),
+            "use item 0x00000001 on tile (5, 6)")
+        self.assertEqual(actions.describe(validate({"type": "equip", "serial": 2})),
+                         "equip 0x00000002")
         self.assertEqual(actions.describe(validate({"type": "stop"})),
                          "stop (no reason given)")
 

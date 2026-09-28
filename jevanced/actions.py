@@ -10,12 +10,14 @@ Action shapes (dicts):
     {"type": "move_to", "x": 1, "y": 2, "z": 0}
     {"type": "use_skill", "skill": "Hiding", "target": "self" | 1234}
     {"type": "cast", "spell": "Greater Heal", "target": "self" | 1234}
-    {"type": "use_item", "serial": 1234, "target": "self" | 1234}
+    {"type": "use_item", "serial": 1234, "target": "self" | 1234 | TILE}
+    {"type": "equip", "serial": 1234}
     {"type": "war_mode", "on": true}
     {"type": "say", "text": "hello"}
     {"type": "stop", "reason": "done"}
 
-"target" is optional wherever it appears.
+"target" is optional wherever it appears. TILE is a map tile such as a
+tree: {"x": 1, "y": 2, "z": 0, "tile": 3274}.
 
 There is deliberately no attack action: jevanced doesn't start fights.
 """
@@ -25,7 +27,7 @@ import re
 DIRECTIONS = ("North", "Right", "East", "Down", "South", "Left", "West", "Up")
 
 ALL_ACTION_TYPES = ("wait", "walk", "move_to", "use_skill", "cast",
-                    "use_item", "war_mode", "say", "stop")
+                    "use_item", "equip", "war_mode", "say", "stop")
 
 # Speech is off by default: it puts model-written text in front of other
 # players, so the user opts in from the UI.
@@ -60,7 +62,14 @@ def _target(action):
         return "self"
     if _is_int(value) and value > 0:
         return value
-    raise InvalidAction("'target' must be \"self\" or a positive integer serial")
+    if isinstance(value, dict):
+        return {
+            "x": _coord(value, "x", 0, MAX_COORD),
+            "y": _coord(value, "y", 0, MAX_COORD),
+            "z": _coord(value, "z", -128, 127),
+            "tile": _coord(value, "tile", 1, 0xFFFF),
+        }
+    raise InvalidAction("'target' must be \"self\", a positive integer serial or a map tile")
 
 
 def _name(action, key):
@@ -113,6 +122,8 @@ def validate(action, allowed=DEFAULT_ALLOWED):
     if kind == "use_item":
         return {"type": "use_item", "serial": _serial(action, "serial"),
                 "target": _target(action)}
+    if kind == "equip":
+        return {"type": "equip", "serial": _serial(action, "serial")}
     if kind == "war_mode":
         on = action.get("on")
         if not isinstance(on, bool):
@@ -139,6 +150,8 @@ def describe(action):
     suffix = ""
     if target == "self":
         suffix = " on self"
+    elif isinstance(target, dict):
+        suffix = " on tile ({0}, {1})".format(target["x"], target["y"])
     elif target:
         suffix = " on 0x{0:08X}".format(target)
     if kind == "wait":
@@ -153,6 +166,8 @@ def describe(action):
         return "cast {0}{1}".format(action["spell"], suffix)
     if kind == "use_item":
         return "use item 0x{0:08X}{1}".format(action["serial"], suffix)
+    if kind == "equip":
+        return "equip 0x{0:08X}".format(action["serial"])
     if kind == "war_mode":
         return "war mode {0}".format("on" if action["on"] else "off")
     if kind == "say":

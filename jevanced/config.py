@@ -3,7 +3,7 @@
 import json
 import os
 
-from jevanced import actions
+from jevanced import actions, tasks
 
 APP_DIR_NAME = "jevanced"
 
@@ -31,6 +31,13 @@ class Settings(object):
         # Who decides: "jev" (Typesafe's API) or "stub" (offline stand-in
         # that only bandages, for trying jevanced without a key).
         "backend": "jev",
+        # What to do (see jevanced.tasks) and the user's own instructions,
+        # which Jev reads alongside the task's goal.
+        "task": tasks.STAY_SAFE,
+        "instructions": "",
+        # Lumberjack stops once it carries this much wood (logs and
+        # boards). 0 means no limit. Counting is done in code, not by Jev.
+        "wood_goal": 0,
     }
     MIN_TICK_MS = 250
     MAX_TICK_MS = 60000
@@ -60,6 +67,14 @@ class Settings(object):
         self.allow_speech = bool(self.allow_speech)
         if self.backend not in ("jev", "stub"):
             self.backend = self.FIELDS["backend"]
+        if self.task not in tasks.NAMES:
+            self.task = self.FIELDS["task"]
+        self.instructions = tasks.clean_instructions(self.instructions)
+        try:
+            goal = int(self.wood_goal)
+        except (TypeError, ValueError):
+            goal = 0
+        self.wood_goal = min(max(goal, 0), tasks.MAX_WOOD_GOAL)
 
     def allowed_actions(self):
         allowed = set(actions.DEFAULT_ALLOWED)

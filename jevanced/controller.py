@@ -8,7 +8,7 @@ Enhanced's Stop button ends the loop too, as a second kill switch.
 import threading
 import time
 
-from jevanced import actions
+from jevanced import actions, tasks
 from jevanced.jev.client import JevAuthError, JevError
 
 IDLE = "idle"
@@ -61,7 +61,13 @@ class Controller(object):
         tick so changes made in the UI apply straight away."""
         self._set(status=RUNNING, detail="", ticks=0, error_streak=0,
                   last_action="")
-        self.log.info("Started. {0} is deciding.".format(client.display_name))
+        settings = get_settings()
+        self.log.info("Started: {0}. {1} is deciding.".format(
+            tasks.label(settings.task), client.display_name))
+        if settings.task == tasks.LUMBERJACK and settings.wood_goal:
+            self.log.info("Stopping at {0} wood.".format(settings.wood_goal))
+        if settings.instructions:
+            self.log.info("Your instructions: " + settings.instructions)
         self.game.notify("started; use the jevanced window's STOP button to stop")
         fatal = None
         try:
@@ -105,12 +111,16 @@ class Controller(object):
         self._dry_run = settings.dry_run
         if not self.game.is_connected():
             raise _Fatal("Not connected to a shard.")
-        state = self.game.read_state(settings.scan_range)
+        state = self.game.read_state(settings.scan_range,
+                                     trees=settings.task == tasks.LUMBERJACK)
         if state.player.is_ghost:
             raise _Fatal("Your character is dead, so jevanced stopped.")
 
+        seen = state.to_dict()
+        seen["task"] = {"name": settings.task, "instructions": settings.instructions,
+                        "wood_goal": settings.wood_goal}
         try:
-            proposed = client.decide(state.to_dict())
+            proposed = client.decide(seen)
         except JevAuthError as exc:
             raise _Fatal("Jev rejected the API key: {0}".format(exc))
         except JevError as exc:
@@ -134,7 +144,7 @@ class Controller(object):
         self._set(ticks=self.snapshot()["ticks"] + 1, last_action=summary)
         kind = action["type"]
         if kind == "stop":
-            self.killswitch.trip("Jev ended the session: " + (action["reason"] or "no reason given"))
+            self.killswitch.trip("Finished: " + (action["reason"] or "no reason given"))
             return 0.0
         if kind == "wait":
             return action["ms"] / 1000.0

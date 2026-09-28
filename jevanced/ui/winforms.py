@@ -17,11 +17,14 @@ clr.AddReference("System.Drawing")
 
 from System.Drawing import Color, Font, FontStyle, Point, Size  # noqa: E402
 from System.Threading import ApartmentState, Thread, ThreadStart  # noqa: E402
+from jevanced import tasks  # noqa: E402
 from System.Windows.Forms import (  # noqa: E402
     AnchorStyles,
     Application,
     Button,
     CheckBox,
+    ComboBox,
+    ComboBoxStyle,
     FlatStyle,
     Form,
     FormStartPosition,
@@ -35,6 +38,7 @@ from System.Windows.Forms import (  # noqa: E402
 
 REFRESH_MS = 300
 WIDTH = 480
+HEIGHT = 750
 
 RED = Color.FromArgb(200, 30, 30)
 DARK_RED = Color.FromArgb(120, 40, 40)
@@ -51,6 +55,15 @@ def _label(parent, text, x, y, w, h=20, bold=False, size=9.0):
     label.Font = Font("Segoe UI", size, FontStyle.Bold if bold else FontStyle.Regular)
     parent.Controls.Add(label)
     return label
+
+
+def _number(box):
+    """A NumericUpDown's number, including one typed but not yet committed
+    (Wine doesn't always commit typed numbers when focus moves on)."""
+    try:
+        return int(str(box.Text).strip())
+    except ValueError:
+        return int(box.Value)
 
 
 def _button(parent, text, x, y, w, h, handler):
@@ -72,7 +85,7 @@ class JevancedForm(Form):
         self._last_log = None
 
         self.Text = "jevanced"
-        self.ClientSize = Size(WIDTH, 640)
+        self.ClientSize = Size(WIDTH, HEIGHT)
         self.MinimumSize = Size(WIDTH + 16, 520)
         self.StartPosition = FormStartPosition.CenterScreen
         self.TopMost = True  # keep the kill switch visible over the client
@@ -109,6 +122,39 @@ class JevancedForm(Form):
         self.key_message.ForeColor = GREY
 
         y += 58
+        _label(self, "Task", pad, y, inner, 18, bold=True)
+        y += 20
+        self.task_box = ComboBox()
+        self.task_box.DropDownStyle = ComboBoxStyle.DropDownList
+        self.task_box.Location = Point(pad, y)
+        self.task_box.Size = Size(inner, 24)
+        for _, text in tasks.TASKS:
+            self.task_box.Items.Add(text)
+        self.task_box.SelectedIndex = 0
+        self.task_box.SelectedIndexChanged += self._on_options
+        self.Controls.Add(self.task_box)
+        y += 30
+        _label(self, "Your instructions for Jev (optional)", pad, y, inner, 18)
+        y += 20
+        self.instructions_box = TextBox()
+        self.instructions_box.Location = Point(pad, y)
+        self.instructions_box.Size = Size(inner, 24)
+        self.instructions_box.MaxLength = tasks.MAX_INSTRUCTIONS
+        self.instructions_box.TextChanged += self._on_options
+        self.Controls.Add(self.instructions_box)
+        y += 30
+        _label(self, "Lumberjack: stop at this much wood (0 = no limit)", pad, y + 2, 300)
+        self.wood_box = NumericUpDown()
+        self.wood_box.Location = Point(pad + 305, y)
+        self.wood_box.Size = Size(90, 24)
+        self.wood_box.Minimum = 0
+        self.wood_box.Maximum = tasks.MAX_WOOD_GOAL
+        self.wood_box.Increment = 50
+        self.wood_box.ValueChanged += self._on_options
+        self.wood_box.TextChanged += self._on_options
+        self.Controls.Add(self.wood_box)
+
+        y += 36
         _label(self, "Options", pad, y, inner, 18, bold=True)
         y += 20
         self.dry_run_box = self._checkbox("Dry run: log what Jev chooses, don't do it", pad, y, inner)
@@ -126,6 +172,7 @@ class JevancedForm(Form):
         self.tick_box.Maximum = 60000
         self.tick_box.Increment = 250
         self.tick_box.ValueChanged += self._on_options
+        self.tick_box.TextChanged += self._on_options
         self.Controls.Add(self.tick_box)
 
         y += 34
@@ -137,7 +184,7 @@ class JevancedForm(Form):
         self.log_box.ScrollBars = ScrollBars.Vertical
         self.log_box.Font = Font("Consolas", 8.5)
         self.log_box.Location = Point(pad, y)
-        self.log_box.Size = Size(inner, 640 - y - pad)
+        self.log_box.Size = Size(inner, HEIGHT - y - pad)
         self.log_box.Anchor = (AnchorStyles.Top | AnchorStyles.Bottom
                                | AnchorStyles.Left | AnchorStyles.Right)
         self.Controls.Add(self.log_box)
@@ -186,7 +233,10 @@ class JevancedForm(Form):
         self.app.update_settings(
             dry_run=self.dry_run_box.Checked,
             allow_speech=self.speech_box.Checked,
-            tick_interval_ms=int(self.tick_box.Value),
+            tick_interval_ms=_number(self.tick_box),
+            task=tasks.NAMES[max(self.task_box.SelectedIndex, 0)],
+            instructions=self.instructions_box.Text,
+            wood_goal=_number(self.wood_box),
         )
 
     def _on_tick(self, sender, args):
@@ -226,8 +276,18 @@ class JevancedForm(Form):
                 self.dry_run_box.Checked = view["dry_run"]
             if self.speech_box.Checked != view["allow_speech"]:
                 self.speech_box.Checked = view["allow_speech"]
-            if int(self.tick_box.Value) != view["tick_interval_ms"]:
+            # Number boxes and the instructions box are only filled in
+            # while the user isn't typing in them.
+            if not self.tick_box.ContainsFocus and int(self.tick_box.Value) != view["tick_interval_ms"]:
                 self.tick_box.Value = view["tick_interval_ms"]
+            if not self.wood_box.ContainsFocus and int(self.wood_box.Value) != view["wood_goal"]:
+                self.wood_box.Value = view["wood_goal"]
+            index = tasks.NAMES.index(view["task"])
+            if self.task_box.SelectedIndex != index:
+                self.task_box.SelectedIndex = index
+            if not self.instructions_box.ContainsFocus and \
+                    self.instructions_box.Text != view["instructions"]:
+                self.instructions_box.Text = view["instructions"]
         finally:
             self._syncing = False
 

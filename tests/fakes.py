@@ -23,7 +23,8 @@ class FakeGame(object):
     def is_connected(self):
         return self.connected
 
-    def read_state(self, scan_range=12):
+    def read_state(self, scan_range=12, trees=False):
+        self.read_trees = trees
         if self.on_read is not None:
             self.on_read()
         if self.read_error is not None:

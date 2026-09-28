@@ -42,6 +42,19 @@ class SettingsTest(unittest.TestCase):
             handle.write("{not json")
         self.assertTrue(store.load().dry_run)
 
+    def test_task_and_instructions(self):
+        self.assertEqual(Settings().task, "stay_safe")
+        self.assertEqual(Settings(task="lumberjack").task, "lumberjack")
+        self.assertEqual(Settings(task="mine gold").task, "stay_safe")
+        s = Settings(instructions="  Chop near\nYew  " + "x" * 300)
+        self.assertTrue(s.instructions.startswith("Chop near Yew x"))
+        self.assertEqual(len(s.instructions), 200)
+        self.assertEqual(Settings(instructions=None).instructions, "")
+        self.assertEqual(Settings().wood_goal, 0)
+        self.assertEqual(Settings(wood_goal="150").wood_goal, 150)
+        self.assertEqual(Settings(wood_goal=-5).wood_goal, 0)
+        self.assertEqual(Settings(wood_goal="lots").wood_goal, 0)
+
     def test_ignores_unknown_keys(self):
         with open(self.path, "w") as handle:
             handle.write('{"api_key": "sk-nope", "dry_run": false}')
