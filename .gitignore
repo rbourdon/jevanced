@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+dist/
+.venv/
+.ruff_cache/
+# Never commit a stored key or local settings.
+*.bin
+settings.json
+jevanced.log

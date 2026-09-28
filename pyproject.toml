@@ -1,0 +1,19 @@
+# jevanced ships as plain .py files for Razor Enhanced (IronPython 3.4);
+# this file only configures the development tools.
+
+[project]
+name = "jevanced"
+version = "0.1.0"
+description = "Let the Jev decision model drive an Ultima Online character through Razor Enhanced"
+requires-python = ">=3.8"
+
+[tool.ruff]
+line-length = 120
+target-version = "py38"
+extend-exclude = ["dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+"run_jevanced.py" = ["F821", "E402"]

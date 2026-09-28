@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  cpython:
+    name: Tests (CPython)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff==0.6.9
+      - run: ruff check .
+      - run: python -m unittest discover -s tests -t . -v
+      - run: python tools/build.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jevanced-zip
+          path: dist/*.zip
+
+  ironpython:
+    # Razor Enhanced runs scripts on IronPython 3.4, so the same tests run
+    # there too, plus a compile of the Windows-only UI and launcher.
+    name: Tests (IronPython 3.4)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet tool install --global IronPython.Console --version 3.4.2
+      - run: ipy tools/compile_check.py
+      - run: ipy -m unittest discover -s tests -t . -v
