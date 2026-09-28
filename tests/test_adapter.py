@@ -135,6 +135,24 @@ class ReadStateTest(unittest.TestCase):
         self.assertEqual(data["mobiles"][0]["notoriety"], "enemy")
         self.assertEqual(data["mobiles"][0]["distance"], 3)
 
+    def test_creature_kind_comes_from_mobtypes(self):
+        import os
+        import tempfile
+        adapter, api, _ = make_adapter()
+        handle, path = tempfile.mkstemp()
+        os.write(handle, b"17\tMONSTER\t0\n")
+        os.close(handle)
+        try:
+            api.mobtypes_path = lambda: path
+            self.assertEqual(adapter.read_state().mobiles[0].kind, "monster")
+        finally:
+            os.remove(path)
+
+    def test_creature_kind_unknown_without_mobtypes(self):
+        adapter, api, _ = make_adapter()
+        api.mobtypes_path = lambda: None
+        self.assertEqual(adapter.read_state().mobiles[0].kind, "unknown")
+
     def test_missing_properties_read_as_defaults(self):
         adapter, api, _ = make_adapter()
         api.Player = Obj(Serial=1, Name=None, Position=pos(5, 6))
@@ -170,9 +188,25 @@ class ExecuteTest(unittest.TestCase):
         adapter.execute({"type": "war_mode", "on": True})
         adapter.execute({"type": "say", "text": "hail"})
         self.assertEqual([c for c in api.Player.calls], [
-            ("Attack", 2), ("Walk", "North"), ("PathFindTo", 1, 2, 3),
+            ("SetWarMode", True), ("Attack", 2), ("Walk", "North"), ("PathFindTo", 1, 2, 3),
             ("SetWarMode", True), ("ChatSay", "hail"),
         ])
+
+    def test_attack_walks_up_to_a_distant_target(self):
+        adapter, api, _ = make_adapter()
+        orc = Obj(Serial=2, Position=pos(103, 101))
+        api.Mobiles.FindBySerial = lambda serial: orc if serial == 2 else None
+        adapter.execute({"type": "attack", "serial": 2})
+        # The player is at (100, 100); walk to the tile beside the orc.
+        self.assertEqual(api.Player.calls,
+                         [("SetWarMode", True), ("Attack", 2), ("PathFindTo", 102, 100, 0)])
+
+    def test_attack_stays_put_when_adjacent_and_already_in_war_mode(self):
+        adapter, api, _ = make_adapter()
+        api.Player.WarMode = True
+        api.Mobiles.FindBySerial = lambda serial: Obj(Serial=2, Position=pos(101, 100))
+        adapter.execute({"type": "attack", "serial": 2})
+        self.assertEqual(api.Player.calls, [("Attack", 2)])
 
     def test_targeted_actions(self):
         adapter, api, _ = make_adapter()

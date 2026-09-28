@@ -74,7 +74,7 @@ class PlayerState(object):
 
 class MobileState(object):
     def __init__(self, serial, name="", hits=0, hits_max=0, notoriety=0,
-                 position=(0, 0, 0), body=0):
+                 position=(0, 0, 0), body=0, kind="unknown"):
         self.serial = serial
         self.name = name
         self.hits = hits
@@ -82,11 +82,13 @@ class MobileState(object):
         self.notoriety = notoriety
         self.position = tuple(position)
         self.body = body
+        self.kind = kind
 
     def to_dict(self, origin=None):
         d = {
             "serial": self.serial,
             "name": self.name,
+            "kind": self.kind,
             "hits": self.hits,
             "hits_max": self.hits_max,
             "notoriety": notoriety_name(self.notoriety),

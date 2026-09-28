@@ -21,19 +21,23 @@ BANDAGE_COOLDOWN_S = 10.0
 ATTITUDE = {
     "innocent": "innocent (blue)",
     "ally": "friendly (green)",
-    "attackable": "neutral (grey)",
+    "attackable": "grey name, free to attack",
     "criminal": "criminal (grey)",
     "enemy": "enemy (orange)",
     "murderer": "hostile (red)",
     "invulnerable": "invulnerable (yellow)",
 }
 TARGETABLE = ("attackable", "criminal", "enemy", "murderer")
+HOSTILE_COLOURS = ("criminal", "enemy", "murderer")
+THREAT_KINDS = ("monster", "sea monster")
+KIND_PHRASE = {"monster": "a monster", "animal": "an animal",
+               "sea monster": "a sea monster", "human": "a person"}
 MAX_TARGETS = 5
 STEP_AWAY_WITHIN = 6  # tiles
 MAX_MESSAGES = 5
 
-GOAL = ("Stay alive. Fight hostile creatures that come near. Leave neutral "
-        "and harmless creatures alone. Heal yourself when you are hurt.")
+GOAL = ("Stay alive. Fight monsters that come near. Leave animals and people "
+        "alone unless they attack you. Heal yourself when you are hurt.")
 
 INSTRUCTIONS = ("You control the character described in `you`, following `goal`. "
                 "Which one action should the character take right now?")
@@ -72,6 +76,19 @@ def _attitude(mob):
     return ATTITUDE.get(mob.get("notoriety"), "unknown")
 
 
+def _is_threat(mob):
+    return mob.get("kind") in THREAT_KINDS or mob.get("notoriety") in HOSTILE_COLOURS
+
+
+def _who(mob):
+    """ "Hibub, a monster, neutral (grey)" """
+    parts = [mob.get("name") or "a creature"]
+    if mob.get("kind") in KIND_PHRASE:
+        parts.append(KIND_PHRASE[mob["kind"]])
+    parts.append(_attitude(mob))
+    return ", ".join(parts)
+
+
 def _targets(state):
     """Living creatures you may attack, nearest first (the state is sorted)."""
     found = []
@@ -108,8 +125,8 @@ def build_options(state, last_bandage_at=None):
     """The moves worth considering now. "wait" is always first."""
     player = state.get("player", {})
     now = state.get("timestamp", 0.0)
-    options = [Option("wait", "Do nothing this turn. Right when nothing hostile is "
-                              "close and you don't need healing.", WAIT)]
+    options = [Option("wait", "Do nothing this turn. Right when no monster is within "
+                              "a few tiles and you don't need healing.", WAIT)]
 
     hits, hits_max = player.get("hits", 0), player.get("hits_max", 0)
     bandages = _bandages(state)
@@ -125,15 +142,15 @@ def build_options(state, last_bandage_at=None):
     for i, mob in enumerate(targets[:MAX_TARGETS]):
         options.append(Option(
             "attack_{0}".format(i + 1),
-            "Attack {0}, {1}, {2} away, at {3}. Right when it is hostile or "
-            "attacking you and you can win the fight.".format(
-                mob.get("name") or "a creature", _attitude(mob),
-                _tiles(mob.get("distance", 0)),
+            "Attack {0}, {1} away, at {2}. Right when it is a monster or is "
+            "attacking you, and you are healthy enough to fight.".format(
+                _who(mob), _tiles(mob.get("distance", 0)),
                 health_words(mob.get("hits", 0), mob.get("hits_max", 0))),
             {"type": "attack", "serial": mob["serial"]}))
 
-    if targets and targets[0].get("distance", 99) <= STEP_AWAY_WITHIN:
-        nearest = targets[0]
+    threats = [m for m in targets if _is_threat(m)]
+    if threats and threats[0].get("distance", 99) <= STEP_AWAY_WITHIN:
+        nearest = threats[0]
         options.append(Option(
             "step_away",
             "Step away from {0}. Right when you are badly hurt or near death "
@@ -152,6 +169,7 @@ def describe_state(state, options):
     for mob in state.get("mobiles", [])[:MAX_TARGETS * 2]:
         creatures.append({
             "name": mob.get("name") or "a creature",
+            "kind": mob.get("kind") or "unknown",
             "attitude": _attitude(mob),
             "distance": _tiles(mob.get("distance", 0)),
             "health": health_words(mob.get("hits", 0), mob.get("hits_max", 0)),

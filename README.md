@@ -22,9 +22,16 @@ what it's doing.
 - **Talking to Jev.** jevanced calls Typesafe's System One API
   ([docs](https://docs.typesafe.ai/api)). Jev doesn't invent actions: it
   picks one of the options jevanced offers and says how sure it is. An
-  attack Jev isn't sure about becomes its likeliest safe move instead. An
-  offline stub that only bandages is still there for trying jevanced
-  without a key (set `"backend": "stub"` in `settings.json`).
+  attack Jev isn't sure about becomes its likeliest safe move instead. In
+  the test client Jev bandaged when hurt, stepped away from an orc when
+  near death, and picked a fight with an orc at full health, walked up to
+  it and killed it. An offline stub that only bandages is still there for
+  trying jevanced without a key (set `"backend": "stub"` in
+  `settings.json`).
+- **Known gaps.** Razor Enhanced only learns other creatures' health when
+  the shard sends it, so Jev may see a wounded monster as unhurt. Jev
+  doesn't know how strong your character is, so it may pick fights it
+  can't win; keep an eye on it.
 
 ## Install
 
@@ -87,6 +94,7 @@ jevanced/
   jev/typesafe.py        the Jev client for Typesafe's API
   jev/http.py            HTTPS via .NET inside Razor Enhanced, urllib elsewhere
   jev/stub.py            offline stand-in that only bandages
+  bodykinds.py           monster / animal / human from the client's mobtypes.txt
   actions.py             allowed actions and validation of Jev's reply
   controller.py          the loop: read, decide, validate, check kill switch, act
   killswitch.py          the stop flag every step checks

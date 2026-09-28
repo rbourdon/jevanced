@@ -15,13 +15,24 @@ learned there:
 - ``Player.Walk(direction)`` only turns the character when it faces
   another way, and returns False if called again too soon, so a walk
   action turns first and retries the step once.
+- Creature kinds (monster, animal...) come from the client's mobtypes.txt,
+  found through the Ultima library Razor Enhanced has already loaded.
 - Reads are defensive (a failing property reads as a default) so a version
   difference degrades one field rather than stopping the loop.
 """
 
+import io
 import time
 
-from jevanced.state import GameState, ItemState, JournalLine, MobileState, PlayerState
+from jevanced.bodykinds import parse_mobtypes
+from jevanced.state import (
+    GameState,
+    ItemState,
+    JournalLine,
+    MobileState,
+    PlayerState,
+    distance,
+)
 
 MAX_MOBILES = 25
 MAX_GROUND_ITEMS = 25
@@ -43,6 +54,21 @@ class RazorApi(object):
         self.Journal = Journal
         self.Misc = Misc
 
+    def mobtypes_path(self):
+        """Path to the client's mobtypes.txt, or None if it can't be found."""
+        try:
+            import clr
+            from System import AppDomain
+
+            for assembly in AppDomain.CurrentDomain.GetAssemblies():
+                if assembly.GetName().Name == "Ultima":
+                    clr.AddReference(assembly)
+                    from Ultima import Files
+                    return Files.GetFilePath("mobtypes.txt")
+        except Exception:
+            pass
+        return None
+
 
 def _read(fn, default=None):
     """Call ``fn`` (a lambda doing one attribute read); default on failure."""
@@ -60,6 +86,12 @@ def _int(fn, default=0):
         return default
 
 
+def _sign(n):
+    if n > 0:
+        return 1
+    return -1 if n < 0 else 0
+
+
 def _position(fn):
     pos = _read(fn)
     if pos is None:
@@ -72,6 +104,7 @@ class RazorAdapter(object):
         self.api = api
         self._clock = clock
         self._journal_after = None
+        self._body_kinds = None
 
     # ---- reading -------------------------------------------------------
 
@@ -127,8 +160,24 @@ class RazorAdapter(object):
                 notoriety=_int(lambda: mob.Notoriety),
                 position=_position(lambda: mob.Position),
                 body=_int(lambda: mob.Body),
+                kind=self._kind(_int(lambda: mob.Body)),
             ))
         return found[:MAX_MOBILES]
+
+    def _kind(self, body):
+        if self._body_kinds is None:
+            self._body_kinds = self._load_body_kinds()
+        return self._body_kinds.get(body, "unknown")
+
+    def _load_body_kinds(self):
+        path = self.api.mobtypes_path()
+        if not path:
+            return {}
+        try:
+            with io.open(path, encoding="latin-1") as handle:
+                return parse_mobtypes(handle.read())
+        except (IOError, OSError):
+            return {}
 
     def _read_ground_items(self, scan_range):
         items = self.api.Items
@@ -194,7 +243,11 @@ class RazorAdapter(object):
         api = self.api
         kind = action["type"]
         if kind == "attack":
+            # The character only swings in war mode.
+            if not _read(lambda: api.Player.WarMode, False):
+                api.Player.SetWarMode(True)
             api.Player.Attack(action["serial"])
+            self._close_in(action["serial"])
         elif kind == "walk":
             return self._walk(action["direction"])
         elif kind == "move_to":
@@ -215,6 +268,21 @@ class RazorAdapter(object):
         else:
             raise ValueError("adapter can't execute {0!r}".format(kind))
         return "ok"
+
+    def _close_in(self, serial):
+        # Attack only picks the target; the character has to be next to it
+        # to swing, and the client doesn't walk there on its own.
+        mob = _read(lambda: self.api.Mobiles.FindBySerial(serial))
+        if mob is None:
+            return
+        there = _position(lambda: mob.Position)
+        here = _position(lambda: self.api.Player.Position)
+        if distance(here, there) > 1:
+            # Aim for the tile beside it: the pathfinder won't end on an
+            # occupied tile.
+            x = there[0] - _sign(there[0] - here[0])
+            y = there[1] - _sign(there[1] - here[1])
+            self.api.Player.PathFindTo(x, y, there[2])
 
     def _walk(self, direction):
         player = self.api.Player

@@ -41,6 +41,7 @@ class TypesafeJevClient(JevClient):
         self._transport = transport or default_transport()
         self._root = api_root
         self._last_bandage_at = None
+        self._last_key = None
         self.last_note = ""
 
     # ---- JevClient -----------------------------------------------------
@@ -52,7 +53,7 @@ class TypesafeJevClient(JevClient):
     def decide(self, state):
         options = choices.build_options(state, self._last_bandage_at)
         if len(options) == 1:
-            self.last_note = "Nothing to decide, waiting."
+            self._note(None, "Nothing to decide, waiting.")
             return options[0].action
         reply = self._call("POST", "/systemone", {
             "model": MODEL,
@@ -67,13 +68,19 @@ class TypesafeJevClient(JevClient):
         if option.action["type"] == "attack" and confidence < ATTACK_CONFIDENCE:
             safe = [o for o in options if o.action["type"] != "attack"]
             option = max(safe, key=lambda o: probabilities.get(o.key, 0.0))
-            self.last_note = "Not sure enough to attack (confidence {0:.2f}), so: {1}".format(
-                confidence, _short(option))
+            self._note(option.key, "Not sure enough to attack (confidence {0:.2f}), so: {1}".format(
+                confidence, _short(option)))
         else:
-            self.last_note = "{0} (confidence {1:.2f})".format(_short(option), confidence)
+            self._note(option.key, "{0} (confidence {1:.2f})".format(_short(option), confidence))
         if option.key == "bandage_self":
             self._last_bandage_at = state.get("timestamp", 0.0)
         return option.action
+
+    def _note(self, key, text):
+        # A new note only when the pick changes, so a long wait logs once.
+        if key != self._last_key or key is None and text != self.last_note:
+            self.last_note = text
+        self._last_key = key
 
     # ---- HTTP ----------------------------------------------------------
 

@@ -93,6 +93,16 @@ class DecideTest(unittest.TestCase):
         action = c.decide(state(hits=12, mobiles=[mob(7, 101, 100)]))
         self.assertEqual(action["type"], "use_item")
 
+    def test_note_changes_only_when_the_pick_changes(self):
+        c, _ = client(chose("wait", 0.7), chose("wait", 0.8), chose("attack_1", 0.9))
+        s = state(mobiles=[mob(7, 103, 100)])
+        c.decide(s)
+        first = c.last_note
+        c.decide(s)
+        self.assertEqual(c.last_note, first)
+        c.decide(s)
+        self.assertIn("Attack", c.last_note)
+
     def test_bandage_starts_a_cooldown(self):
         c, t = client(chose("bandage_self"))
         self.assertEqual(c.decide(state(hits=50, timestamp=100.0))["type"], "use_item")
