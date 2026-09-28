@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  cpython:
+    name: Tests (CPython)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff==0.6.9
+      - run: ruff check .
+      - run: python -m unittest discover -s tests -t . -v
+      - run: python tools/build.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jevanced-zip
+          path: dist/*.zip
+
+  ironpython:
+    # Razor Enhanced runs scripts on IronPython 3.4, so the same tests run
+    # there too, plus a compile of the Windows-only UI and launcher.
+    name: Tests (IronPython 3.4)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet tool install --global IronPython.Console --version 3.4.2
+      - run: ipy tools/compile_check.py
+      - run: ipy -m unittest discover -s tests -t . -v
+
+  windows:
+    # Razor Enhanced runs on Windows with IronPython on .NET Framework. This
+    # installs jevanced with install.ps1 in Windows PowerShell, runs the tests
+    # on .NET Framework, then smoke-tests the installed copy: the real window,
+    # Windows DPAPI key storage, Start and STOP. No UO client is involved.
+    name: Windows (installer, window, DPAPI)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python tools/build.py
+      - name: Get IronPython 3.4.2 for .NET Framework
+        run: |
+          Invoke-WebRequest https://github.com/IronLanguages/ironpython3/releases/download/v3.4.2/IronPython.3.4.2.zip -OutFile ipy.zip
+          Expand-Archive ipy.zip -DestinationPath C:\ipy
+      - name: Tests on .NET Framework
+        run: C:\ipy\net462\ipy.exe -m unittest discover -s tests -t . -v
+      - name: Install with install.ps1
+        shell: powershell
+        run: |
+          $re = "$env:USERPROFILE\Documents\UO\RazorEnhanced"
+          New-Item -ItemType Directory -Force $re | Out-Null
+          New-Item -ItemType File "$re\RazorEnhanced.exe" | Out-Null
+          $env:JEVANCED_ZIP = (Resolve-Path dist\jevanced-*.zip).Path
+          Get-Content .\install.ps1 -Raw | Invoke-Expression
+          if (-not (Test-Path "$re\Scripts\jevanced\__init__.py")) { throw "jevanced package wasn't installed" }
+          if (-not (Test-Path "$re\Scripts\run_jevanced.py")) { throw "run_jevanced.py wasn't installed" }
+      - name: Smoke test the installed copy
+        run: C:\ipy\net462\ipy.exe tools\windows_smoke.py "$env:USERPROFILE\Documents\UO\RazorEnhanced\Scripts"
